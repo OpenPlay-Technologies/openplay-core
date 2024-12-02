@@ -2,8 +2,10 @@ module openplay::coin_flip;
 
 // === Imports ===
 use openplay::coin_flip_context::{Self, CoinFlipContext};
+use openplay::transaction::{Transaction};
 use sui::table::{Self, Table};
 use sui::random::{RandomGenerator};
+use std::vector::{Self, vector};
 
 // === Errors ===
 const EUnsupportedStake: u64 = 1;
@@ -25,6 +27,7 @@ public enum Interaction has copy, drop {
 
 // === Public-Package Functions ===
 public(package) fun interact(self: &mut CoinFlip, interact: Interaction, balance_manager_id: ID, rand: &mut RandomGenerator){
+    let txs = vector::empty<Transaction>();
     let context = self.get_context(balance_manager_id);
     self.validate_interact(interact);
 
@@ -39,7 +42,8 @@ public(package) fun new_interact(interact_type: u8, stake: u64): Interaction {
 
 
 // === Private Functions ===
-fun interact_int(self: &mut CoinFlip, context: &mut CoinFlipContext, interact: Interaction, balance_manager_id: ID, rand: &mut RandomGenerator) {
+fun interact_int(self: &mut CoinFlip, context: &mut CoinFlipContext, interact: Interaction, balance_manager_id: ID, 
+transactions: &mut vector<Transaction>, rand: &mut RandomGenerator) {
     match (interact){
         Interaction::PLACE_BET { stake } => {
             
