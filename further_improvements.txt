@@ -1,0 +1,4 @@
+- Make the balance manager shared like in deepbook, where you have an owner and PlayCaps (instead of TradeCaps)
+- Support other currencies to play with instead of just SUI
+- Make a PLAY governance token such that stakers of this token receive the protocol fee, and they can vote on proposals to change fee structures
+- AUDIT!! integer overflow, random vulnerabilities (gas cost per flow), and other possible vulnerabilities
