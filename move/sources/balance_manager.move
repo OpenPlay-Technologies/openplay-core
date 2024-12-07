@@ -5,6 +5,7 @@
 /// This will likely be added later.
 module openplay::balance_manager;
 
+use sui::balance;
 use sui::balance::Balance;
 use sui::sui::SUI;
 
@@ -12,9 +13,17 @@ use sui::sui::SUI;
 const EBalanceTooLow: u64 = 1;
 
 // === Structs ===
-public struct BalanceManager has key {
+public struct BalanceManager has key, store {
     id: UID,
     balance: Balance<SUI>,
+}
+
+// === Public-Mutative Functions ===
+public fun new(ctx: &mut TxContext): BalanceManager {
+    BalanceManager{
+        id: object::new(ctx),
+        balance: balance::zero()
+    }
 }
 
 // === Public-View Functions ===
