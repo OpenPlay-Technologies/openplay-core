@@ -1,18 +1,20 @@
 module openplay::roulette_state;
-use sui::borrow;
-use openplay::roulette_const::State;
+
+use openplay::roulette_const::{state_settled, max_recent_outcomes};
 use openplay::roulette_context::{RouletteContext};
-use sui::table::Table;
 
 
 public struct RouletteState has store {
-    outcome_count : Table<u8,u64>,
+    outcome_count : vector<u8>, // vector with as index the outcome number and as value the count. 37 is 00.
     recent_outcomes : vector<u8>,
 }
 
 public fun empty(): RouletteState {
+
+    let outcome_count = initialize_array_with_zeros();
+
     RouletteState {
-        outcome_count: table::new(),
+        outcome_count,
         recent_outcomes: vector::empty(),
     }
 }
@@ -21,8 +23,8 @@ public fun process_context(self: &mut RouletteState, ctx: &RouletteContext) {
     let outcome_number = ctx.get_outcome_number();
 
     // State only needs to be updated on a settle
-    if (ctx.state() != State::SETTLED) {
-        return;
+    if (ctx.get_state() != state_settled()) {
+        return
     };
 
     // Recent outcomes
@@ -32,8 +34,23 @@ public fun process_context(self: &mut RouletteState, ctx: &RouletteContext) {
     };
 
     // Counters
-    let count = self.outcome_count.get_or_default(outcome_number, 0);
-    self.outcome_count.insert(outcome_number, count + 1);
+    let count_ref = vector::borrow_mut(&mut self.outcome_count, outcome_number as u64);
+    *count_ref = *count_ref + 1;
+}
+
+
+public fun initialize_array_with_zeros(): vector<u8> {
+    let mut v = vector::empty<u8>();
+    let length = 38;
+
+    // Push 0 into the vector 37 times
+    let mut i = 0;
+    while (i < length) {
+        vector::push_back(&mut v, 0);
+        i = i + 1;
+    };
+
+    v
 }
 
 

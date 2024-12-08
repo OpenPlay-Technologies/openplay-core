@@ -2,19 +2,34 @@ module openplay::roulette_const;
 
 use std::string::{String, utf8};
 
-public enum State {
-    NEW,
-    INITIALIZED,
-    SETTLED,
+const MAX_RECENT_OUTCOMES: u64 = 10;
+
+public fun state_new(): String {
+    utf8(b"New")
 }
 
-public enum WheelType {
-    AMERICAN,
-    EUROPEAN,
+public fun state_initialized(): String {
+    utf8(b"Initialized")
 }
 
-public fun get_number_slots(wheel_type:WheelType) : u64 {
-    if (wheel_type == WheelType::AMERICAN) {
+public fun state_settled(): String {
+    utf8(b"Settled")
+}
+
+public fun wheel_type_american(): String {
+    utf8(b"American")
+}
+
+public fun wheel_type_european(): String {
+    utf8(b"European")
+}
+
+public fun max_recent_outcomes(): u64 {
+    MAX_RECENT_OUTCOMES
+}
+
+public fun get_number_slots(wheel_type:String) : u8 {
+    if (wheel_type == wheel_type_american()) {
         38
     } else {
         37
@@ -127,6 +142,19 @@ public fun color_payout_factor(): u8 {
 public fun even_odd_payout_factor(): u8 {
     2
 }
+
+
+public fun get_color_from_number(number: u8) : String {
+    if (number == 0 || number == 37) {
+        color_green()
+    } else if (number % 2 == 0) {
+        color_black()
+    } else {
+        color_red()
+    }
+}
+
+
 
 
 

@@ -1,13 +1,16 @@
 module openplay::roulette;
 
 use std::string::String;
+use openplay::roulette_state;
+use openplay::roulette_const::{get_number_slots,get_color_from_number};
+use openplay::roulette_context;
 use openplay::coin_flip_const::place_bet_action;
-use sui::kiosk::place;
 use sui::random::RandomGenerator;
-use openplay::transaction::Transaction;
-use openplay::roulette_context::{RouletteContext, Prediction, is_valid_prediction, Outcome};
-use sui::table::Table;
-use openplay::roulette_const::{WheelType};
+use openplay::transaction::{Transaction, win, bet};
+use openplay::roulette_context::{RouletteContext, Prediction, is_valid_prediction, create_prediction,
+    create_outcome
+};
+use sui::table::{Self, Table};
 use openplay::roulette_state::RouletteState;
 
 // === Errors ===
@@ -20,7 +23,7 @@ const EUnsupportedAction: u64 = 3;
 public struct Roulette has store {
     max_stake: u64,
     contexts: Table<ID,RouletteContext>,
-    wheel_type: WheelType,
+    wheel_type: String,
     state: RouletteState,
 }
 
@@ -35,7 +38,7 @@ public enum InteractionType has copy, drop, store {
 }
 
 // === Public-Mutative Functions ===
-public fun new(max_stake: u64, wheel_type: WheelType, ctx: &mut TxContext): Roulette {
+public fun new(max_stake: u64, wheel_type: String, ctx: &mut TxContext): Roulette {
     Roulette {
         max_stake,
         contexts: table::new(ctx),
@@ -65,11 +68,12 @@ public(package) fun interact(
     let context = self.contexts.borrow_mut(interaction.balance_manager_id);
 
     // Perform the interaction using a mutable borrow
-    self.interact_int(
+    interact_int(
         context,
         interaction.interact_type,
         &mut interaction.transactions,
         rand,
+        self.wheel_type
     );
 
     // Update the state
@@ -86,16 +90,12 @@ public(package) fun new_interact(
 ) : Interaction {
 
     if (interact_name != place_bet_action()) {
-        abort EUnsupportedAction;
+        abort EUnsupportedAction
     };
 
     let transaction = vector::empty<Transaction>();
 
-    let prediction = Prediction {
-        numbers,
-        color,
-        bet_type,
-    };
+    let prediction = create_prediction(bet_type, numbers, color);
 
     Interaction {
         balance_manager_id,
@@ -106,31 +106,28 @@ public(package) fun new_interact(
 
 
 fun interact_int(
-    self: &mut Roulette,
     context: &mut RouletteContext,
     interact_type: InteractionType,
     transactions: &mut vector<Transaction>,
     rand: &mut RandomGenerator,
+    wheel_type: String,
 ) {
     match (interact_type) {
         InteractionType::PLACE_BET { stake, prediction: prediction } => {
             // Update context
-            transactions.push_back(Transaction::new(stake));
-            context.bet(stake, prediction, self.wheel_type);
+            transactions.push_back(bet(stake));
+            context.bet(stake, prediction, wheel_type);
 
 
             // Generate result
-            let max_number = get_number_slots(self.wheel_type) - 1; // subtract one because slots start at 0
+            let max_number = get_number_slots(wheel_type) - 1; // subtract one because slots start at 0
 
-            let x = rand.generate_u64_in_range(0, max_number);
-            let result = Outcome {
-                number: x,
-                color: get_color(x, self.wheel_type),
-            };
+            let x = rand.generate_u64_in_range(0, max_number as u64);
+            let result = create_outcome(x as u8, get_color_from_number(x as u8));
 
-            context.settle(result, self.wheel_type);
+            context.settle(result, wheel_type);
 
-            transactions.push_back(Transaction::new(context.get_payout()));
+            transactions.push_back(win(context.get_payout()));
         },
     }
 }
@@ -150,3 +147,8 @@ fun validate_interact(self: &Roulette, interaction: &Interaction) {
 }
 
 
+fun ensure_context(self: &mut Roulette, balance_manager_id: ID) {
+    if (!self.contexts.contains(balance_manager_id)) {
+        self.contexts.add(balance_manager_id, roulette_context::empty());
+    };
+}
