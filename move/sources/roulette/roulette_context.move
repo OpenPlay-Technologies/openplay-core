@@ -1,6 +1,12 @@
 module openplay::roulette_context;
 
-use openplay::roulette_const::{BetType, Color, State, WheelType};
+use std::string;
+use std::string::String;
+use sui::balance::split;
+use openplay::roulette_const::{State, WheelType, color_red, straight_up_bet, split_bet,
+    street_bet, corner_bet, column_bet, dozen_bet, five_number_bet, half_bet,
+    even_odd_bet, color_bet, line_bet
+};
 
 
 // === Errors ===
@@ -18,13 +24,13 @@ public struct RouletteContext has store {
 
 public struct Prediction has copy {
     numbers: vector<u8>,
-    color: Color,
-    bet_type: BetType,
+    color: String,
+    bet_type: String,
 }
 
 public struct Outcome {
     number: u8,
-    color: Color,
+    color: String,
 }
 
 
@@ -33,12 +39,12 @@ public fun empty(): RouletteContext {
         stake: 0,
         prediction: Prediction {
             numbers: vector::empty(),
-            color: Color::RED,
-            bet_type: BetType::STRAIGHT_UP,
+            color: color_red(),
+            bet_type: straight_up_bet(),
         },
         result: Outcome {
             number: 0,
-            color: Color::RED,
+            color: color_red(),
         },
         state: State::NEW,
     }
@@ -57,42 +63,35 @@ public fun result(self: &RouletteContext): Outcome {
     self.result
 }
 
+
+public fun get_outcome_number(self: &RouletteContext) : u8 {
+    self.result.number
+}
+
 fun is_win(self: &RouletteContext): bool {
     // check if the player won
-    match (self.prediction.bet_type) {
-            BetType::STRAIGHT_UP => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::SPLIT => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::STREET => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::CORNER => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::COLUMN => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::DOZEN => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::FIVE_NUMBER => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::HALF => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            BetType::COLOR => {
-            self.prediction.color == self.result.color;
-        }
-            BetType::EVEN_ODD => {
-            self.prediction.numbers.contains(self.result.number);
-        }
-            _ => {
-            false
-        }
+    if (self.prediction.bet_type == straight_up_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == split_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == street_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == corner_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == column_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == dozen_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == five_number_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == half_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else if (self.prediction.bet_type == column_bet()) {
+        self.prediction.color == self.result.color
+    } else if (self.prediction.bet_type == even_odd_bet()) {
+        self.prediction.numbers.contains(self.result.number)
+    } else {
+        abort EInvalidPrediction
     }
 }
 
@@ -105,49 +104,88 @@ public fun bet(self: &mut RouletteContext, stake: u64, prediction: Prediction, w
     self.state = State::INITIALIZED;
 }
 
-public fun settle(self: &mut RouletteContext, result: Outcome) {
-    assert_valid_result(&result);
+public fun settle(self: &mut RouletteContext, result: Outcome, wheel_type: WheelType) {
+    assert_valid_result(&result, wheel_type);
     self.result = result;
     self.state = State::SETTLED;
+}
+
+public fun get_payout(self: &RouletteContext) : u64 {
+    // get the payout
+    if (self.is_win()) {
+        self.stake * (get_payout_factor(self.prediction.bet_type) as u64)
+    } else {
+        0
+    }
+}
+
+
+public fun get_payout_factor(bet_type: String) : u8 {
+    if (bet_type == straight_up_bet()) {
+        straight_up_payout_factor()
+    }
+    else if (bet_type == split_bet()) {
+        split_payout_factor()
+    }
+    else if (bet_type == street_bet()) {
+        street_payout_factor()
+    }
+    else if (bet_type == corner_bet()) {
+        corner_payout_factor()
+    }
+    else if (bet_type == column_bet()) {
+        column_payout_factor()
+    }
+    else if (bet_type == dozen_bet()) {
+        dozen_payout_factor()
+    }
+    else if (bet_type == line_bet()) {
+        line_payout_factor()
+    }
+    else if (bet_type == five_number_bet()) {
+        five_number_payout_factor()
+    }
+    else if (bet_type == half_bet()) {
+        half_payout_factor()
+    }
+    else if (bet_type == color_bet()) {
+        color_payout_factor()
+    }
+    else if (bet_type == even_odd_bet()) {
+        even_odd_payout_factor()
+    }
+    else {
+        abort EInvalidPrediction
+    }
 }
 
 
 public fun is_valid_prediction(prediction: Prediction, wheel_type: WheelType) : bool {
     // validate the prediction
-    match (prediction.bet_type) {
-            BetType::STRAIGHT_UP => {
-            (prediction.numbers).len() == 1
-        }
-            BetType::SPLIT => {
-            (prediction.numbers).len() == 2
-        }
-            BetType::STREET => {
-            (prediction.numbers).len() == 3
-        }
-            BetType::CORNER => {
-            (prediction.numbers).len() == 4
-        }
-            BetType::COLUMN => {
-            (prediction.numbers).len() == 12
-        }
-            BetType::DOZEN => {
-            (prediction.numbers).len() == 12
-        }
-            BetType::FIVE_NUMBER => {
-            (prediction.numbers).len() == 5 && wheel_type == WheelType::AMERICAN
-        }
-            BetType::HALF => {
-            (prediction.numbers).len() == 18
-        }
-            BetType::COLOR => {
-            (prediction.numbers).len() == 0
-        }
-            BetType::EVEN_ODD => {
-            (prediction.numbers).len() == 0
-        }
-            _ => {
-            false
-        }
+    if (prediction.bet_type == straight_up_bet()) {
+        (prediction.numbers).len() == 1
+    } else if (prediction.bet_type == split_bet()) {
+        (prediction.numbers).len() == 2
+    } else if (prediction.bet_type == street_bet()) {
+        (prediction.numbers).len() == 3
+    } else if (prediction.bet_type == corner_bet()) {
+        (prediction.numbers).len() == 4
+    } else if (prediction.bet_type == line_bet()) {
+        (prediction.numbers).len() == 6
+    } else if (prediction.bet_type == column_bet()) {
+        (prediction.numbers).len() == 12
+    } else if (prediction.bet_type == dozen_bet()) {
+        (prediction.numbers).len() == 12
+    } else if (prediction.bet_type == five_number_bet()) {
+        (prediction.numbers).len() == 5 && wheel_type == WheelType::AMERICAN
+    } else if (prediction.bet_type == half_bet()) {
+        (prediction.numbers).len() == 18
+    } else if (prediction.bet_type == color_bet()) {
+        (prediction.numbers).len() == 0
+    } else if (prediction.bet_type == even_odd_bet()) {
+        (prediction.numbers).len() == 0
+    } else {
+        false
     }
 }
 
