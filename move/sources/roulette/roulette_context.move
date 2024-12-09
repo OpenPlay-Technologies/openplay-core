@@ -17,15 +17,14 @@ const EInvalidStateTransition: u64 = 3;
 
 // === Structs ===
 public struct RouletteContext has store {
-    stake: u64,
-    prediction: Prediction,
+    stakes: vector<u64>,
+    predictions: vector<Prediction>,
     result: Outcome,
     state: String,
 }
 
 public struct Prediction has copy, store, drop {
     numbers: vector<u8>,
-    color: String,
     bet_type: String,
 }
 
@@ -37,12 +36,8 @@ public struct Outcome has store, drop, copy {
 
 public fun empty(): RouletteContext {
     RouletteContext {
-        stake: 0,
-        prediction: Prediction {
-            numbers: vector::empty(),
-            color: color_red(),
-            bet_type: straight_up_bet(),
-        },
+        stakes: vector::empty<u64>(),
+        predictions: vector::empty<Prediction>(),
         result: Outcome {
             number: 0,
             color: color_red(),
@@ -52,14 +47,6 @@ public fun empty(): RouletteContext {
 }
 
 // === Public-View Functions ===
-public fun stake(self: &RouletteContext): u64 {
-    self.stake
-}
-
-public fun prediction(self: &RouletteContext): Prediction {
-    self.prediction
-}
-
 public fun result(self: &RouletteContext): Outcome {
     self.result
 }
@@ -73,17 +60,29 @@ public fun get_state(self: &RouletteContext) : String {
     self.state
 }
 
-public fun get_outcome_color(self: &RouletteContext) : String {
-    self.result.color
+
+public(package) fun create_prediction(bet_type: String, numbers: vector<u8>) : Prediction {
+    Prediction {
+        numbers,
+        bet_type,
+    }
 }
 
 
-public(package) fun create_prediction(bet_type: String, numbers: vector<u8>, color: String) : Prediction {
-    Prediction {
-        numbers,
-        color,
-        bet_type,
-    }
+public(package) fun create_predictions(bet_types : vector<String>, included_numbers : vector<vector<u8>>) : vector<Prediction> {
+    let mut i = 0;
+    let len = bet_types.length();
+    let mut result : vector<Prediction> = vector::empty();
+    loop {
+        if (i == len) {
+            break
+        };
+        let bet_type = bet_types[i];
+        let numbers = included_numbers[i];
+        vector::push_back(&mut result, create_prediction(bet_type, numbers));
+        i = i + 1;
+    };
+    result
 }
 
 public(package) fun create_outcome(number: u8, color: String) : Outcome {
@@ -94,57 +93,48 @@ public(package) fun create_outcome(number: u8, color: String) : Outcome {
 }
 
 
-fun is_win(self: &RouletteContext): bool {
+fun is_win(self: &RouletteContext, i : u8): bool {
     // check if the player won
-    if (self.prediction.bet_type == straight_up_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == split_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == street_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == corner_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == column_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == dozen_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == five_number_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == half_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else if (self.prediction.bet_type == column_bet()) {
-        self.prediction.color == self.get_outcome_color()
-    } else if (self.prediction.bet_type == even_odd_bet()) {
-        self.prediction.numbers.contains(&self.get_outcome_number())
-    } else {
-        abort EInvalidPrediction
-    }
+    let prediction = &self.predictions[i as u64];
+    prediction.numbers.contains(&self.get_outcome_number())
 }
 
 
 // === Public-Mutative Functions ===
-public fun bet(self: &mut RouletteContext, stake: u64, prediction: Prediction, wheel_type: String) {
-    validate_prediction(prediction, wheel_type);
-    assert_valid_state_transition(self, state_initialized());
-    self.stake = stake;
-    self.prediction = prediction;
+public fun bet(self: &mut RouletteContext, stakes: vector<u64>, predictions: vector<Prediction>, wheel_type: String) {
+    validate_predictions(predictions, wheel_type);
+    self.assert_valid_state_transition(state_initialized());
+    self.stakes = stakes;
+    self.predictions = predictions;
     self.state = state_initialized();
 }
 
 public fun settle(self: &mut RouletteContext, result: Outcome, wheel_type: String) {
     assert_valid_result(&result, wheel_type);
-    assert_valid_state_transition(self, state_settled());
+    self.assert_valid_state_transition(state_settled());
     self.result = result;
     self.state = state_settled();
 }
 
 public fun get_payout(self: &RouletteContext) : u64 {
     // get the payout
-    if (self.is_win()) {
-        self.stake * (get_payout_factor(self.prediction.bet_type) as u64)
-    } else {
-        0
-    }
+    let num_predictions = (self.predictions).length();
+    let mut i : u8 = 0;
+    let mut total_payout = 0;
+    loop {
+        if (i as u64 == num_predictions) {
+            break
+        };
+        let prediction = &self.predictions[i as u64];
+
+        if (self.is_win(i)) {
+            total_payout = total_payout + self.stakes[i as u64] * (get_payout_factor(prediction.bet_type) as u64)
+        };
+
+        i = (i + 1);
+    };
+
+    total_payout
 }
 
 
@@ -188,6 +178,45 @@ public fun get_payout_factor(bet_type: String) : u8 {
 }
 
 
+public fun is_valid_stakes(stakes: vector<u64>, max_stake: u64) : bool {
+    // validate the stakes
+    let mut i = 0;
+    let len = stakes.length();
+    loop {
+        if (i == len) {
+            break
+        };
+        let stake = stakes[i];
+        if (!is_valid_stake(stake, max_stake)) {
+            return false
+        };
+        i = i + 1;
+    };
+    true
+}
+
+public fun is_valid_stake(stake: u64, max_stake: u64) : bool {
+    // validate the stake
+    stake <= max_stake
+}
+
+public fun is_valid_predictions(predictions: vector<Prediction>, wheel_type: String) : bool {
+    // validate the predictions
+    let mut i = 0;
+    let len = predictions.length();
+    loop {
+        if (i == len) {
+            break
+        };
+        let prediction = predictions[i];
+        if (!is_valid_prediction(prediction, wheel_type)) {
+            return false
+        };
+        i = i + 1;
+    };
+    true
+}
+
 public fun is_valid_prediction(prediction: Prediction, wheel_type: String) : bool {
     // validate the prediction
     if (prediction.bet_type == straight_up_bet()) {
@@ -218,9 +247,9 @@ public fun is_valid_prediction(prediction: Prediction, wheel_type: String) : boo
 }
 
 
-fun validate_prediction(prediction: Prediction, wheel_type: String) {
-    // validate the prediction
-    assert!(is_valid_prediction(prediction, wheel_type), EInvalidPrediction);
+fun validate_predictions(predictions: vector<Prediction>, wheel_type: String) {
+    // validate the predictions
+    assert!(is_valid_predictions(predictions, wheel_type), EInvalidPrediction);
 }
 
 fun assert_valid_result(result: &Outcome, wheel_type: String) {
