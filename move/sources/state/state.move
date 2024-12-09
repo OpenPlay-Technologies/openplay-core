@@ -4,19 +4,17 @@
 module openplay::state;
 
 use openplay::account::{Self, Account};
-use openplay::history::History;
+use openplay::constants::{owner_fee, protocol_fee};
+use openplay::history::{Self, History};
 use openplay::transaction::{Transaction, is_credit};
-use sui::table::Table;
+use std::uq32_32::{int_mul};
+use sui::table::{Self, Table};
 
 // === Structs ===
 public struct State has store {
     accounts: Table<ID, Account>,
     history: History,
 }
-
-// === Constant ===
-const OWNER_FEE_BPS: u64 = 50; // in bps , taken on bets
-const PROTOCOL_FEE_BPS: u64 = 50; // in bps , taken on bets
 
 // === Errors ===
 const EUnknownTransaction: u64 = 1;
@@ -101,10 +99,35 @@ public(package) fun process_end_of_day(
     epoch: u64,
     profits: u64,
     losses: u64,
-    end_balance: u64,
     ctx: &TxContext,
 ) {
-    self.history.process_end_of_day(epoch, profits, losses, end_balance, ctx);
+    self.history.process_end_of_day(epoch, profits, losses, ctx);
+}
+
+public(package) fun new(ctx: &mut TxContext): State {
+    State {
+        accounts: table::new(ctx),
+        history: history::empty(ctx),
+    }
+}
+
+/// This function can be used to settle any remaining balances on the account.
+/// This can be used to claim profits or to claim unstaked amount that can available.
+/// Returns a tuple (credit_balance, debit_balance).
+/// The Vault uses thes values to perform any necessary transfers in the balance manager.
+public(package) fun settle_account(
+    self: &mut State,
+    balance_manager_id: ID,
+    ctx: &TxContext,
+): (u64, u64) {
+    self.update_account(balance_manager_id, ctx);
+    let account = &mut self.accounts[balance_manager_id];
+    account.settle()
+}
+
+public(package) fun active_stake(self: &mut State, balance_manager_id: ID, ctx: &TxContext): u64 {
+    self.update_account(balance_manager_id, ctx);
+    self.accounts[balance_manager_id].active_stake()
 }
 
 // == Private Functions ==
@@ -116,16 +139,18 @@ fun update_account(self: &mut State, balance_manager_id: ID, ctx: &TxContext) {
     };
 
     let account = &mut self.accounts[balance_manager_id];
-    let (mut epoch_change, mut prev_epoch, mut active_stake) = account.update(ctx);
+
+    let (mut current_account_epoch, mut active_stake) = account.current_state();
 
     // process the account's ggr share for all epochs between the last activate epoch and the current one
-    while (epoch_change) {
+    while (current_account_epoch < ctx.epoch()) {
         let (epoch_profits, epoch_losses) = self
             .history
-            .calculate_ggr_share(prev_epoch, active_stake);
-        account.process_ggr_share(epoch_profits, epoch_losses);
+            .calculate_ggr_share(current_account_epoch, active_stake);
+        
+        account.process_end_of_day(current_account_epoch, epoch_profits, epoch_losses, ctx);
 
-        (epoch_change, prev_epoch, active_stake) = account.update(ctx);
+        (current_account_epoch, active_stake) = account.current_state();
     }
 }
 
@@ -151,7 +176,10 @@ fun process_transactions_for_account(
 fun total_protocol_fee(transactions: &vector<Transaction>): u64 {
     let mut total_fee = 0;
     transactions.do_ref!(|tx| {
-        total_fee = total_fee + (tx.amount() / 10000 * PROTOCOL_FEE_BPS)
+        if (tx.is_debit()){
+            let fee_amount = int_mul(tx.amount(), protocol_fee());
+            total_fee = total_fee + fee_amount;
+        }
     });
     total_fee
 }
@@ -160,7 +188,10 @@ fun total_protocol_fee(transactions: &vector<Transaction>): u64 {
 fun total_owner_fee(transactions: &vector<Transaction>): u64 {
     let mut total_fee = 0;
     transactions.do_ref!(|tx| {
-        total_fee = total_fee + (tx.amount() / 10000 * OWNER_FEE_BPS)
+        if (tx.is_debit()){
+            let fee_amount = int_mul(tx.amount(), owner_fee());
+            total_fee = total_fee + fee_amount
+        }
     });
     total_fee
 }

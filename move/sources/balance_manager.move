@@ -28,18 +28,23 @@ public fun new(ctx: &mut TxContext): BalanceManager {
 
 // === Public-View Functions ===
 /// Returns the id of the balance_manager.
-public fun id(balance_manager: &BalanceManager): ID {
-    balance_manager.id.to_inner()
+public fun id(self: &BalanceManager): ID {
+    self.id.to_inner()
+}
+
+/// Gets the current amount on the balance.
+public fun balance(self: &BalanceManager): u64 {
+    self.balance.value()
 }
 
 // === Public-Package Functions ===
 /// Withdraws the provided amount from the `balance`. Fails if there are not sufficient funds.
-public(package) fun withdraw_int(self: &mut BalanceManager, withdraw_amount: u64): Balance<SUI> {
+public fun withdraw(self: &mut BalanceManager, withdraw_amount: u64): Balance<SUI> {
     assert!(self.balance.value() > withdraw_amount, EBalanceTooLow);
     self.balance.split(withdraw_amount)
 }
 
 /// Deposits the provided balance into the `balance`.
-public(package) fun deposit_int(self: &mut BalanceManager, to_deposit: Balance<SUI>) {
+public fun deposit(self: &mut BalanceManager, to_deposit: Balance<SUI>) {
     self.balance.join(to_deposit);
 }

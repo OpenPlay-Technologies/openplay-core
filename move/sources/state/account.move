@@ -7,6 +7,8 @@ module openplay::account;
 // == Errors ==
 const EInvalidGgrShare: u64 = 1;
 const ECancellationWasRequested: u64 = 2;
+const EEpochMismatch: u64 = 3;
+const EEpochHasNotFinishedYet: u64 = 4;
 
 // === Structs ===
 public struct Account has store {
@@ -19,6 +21,11 @@ public struct Account has store {
     inactive_stake: u64,
     unstake_requested: bool,
     // ... Other things like loyalty rank, responsible gaming limits etc.
+}
+
+// === Public-View Functions ===
+public fun active_stake(self: &Account): u64 {
+    self.active_stake
 }
 
 // === Public-Package Functions ===
@@ -35,36 +42,18 @@ public(package) fun empty(ctx: &TxContext): Account {
     }
 }
 
-/// Update the account data for the new epoch.
-/// Returns a tuple (epoch_changed, prev_epoch, prev_active_stake)
-public(package) fun update(self: &mut Account, ctx: &TxContext): (bool, u64, u64) {
-    if (self.epoch == ctx.epoch()) return (false, 0, 0);
 
-    let prev_epoch = self.epoch;
-    let prev_active_stake = self.active_stake;
-
-    // Unlock the staked amount
-    if (self.unstake_requested) {
-        self.credit_balance = self.credit_balance + self.active_stake;
-        self.active_stake = 0;
-    };
-
-    // Activate the stake that was waiting for activation
-    self.active_stake = self.active_stake + self.inactive_stake;
-    self.inactive_stake = 0;
-
-    // Increase the epoch number by 1
-    // We do this such that we can advance step by step to the current epoch and distribute winnings for each epoch that needs to be processed
-    self.epoch = self.epoch + 1;
-    self.unstake_requested = false;
-
-    (true, prev_epoch, prev_active_stake)
+public(package) fun current_state(self: &Account): (u64, u64) {
+    (self.epoch, self.active_stake)
 }
 
-/// Process the ggr share of the account.
+/// Process the end of day.
 /// Wins are added to the active stake, while losses are removed from the active stake.
-public(package) fun process_ggr_share(self: &mut Account, profits: u64, losses: u64) {
+/// Pending stake is activated, and pending unstake is removed.
+public(package) fun process_end_of_day(self: &mut Account, epoch: u64, profits: u64, losses: u64,  ctx: &TxContext) {
     assert!(profits == 0 || losses == 0, EInvalidGgrShare);
+    assert!(self.epoch == epoch, EEpochMismatch);
+    assert!(ctx.epoch() > self.epoch, EEpochHasNotFinishedYet);
     if (profits > 0) {
         self.active_stake = self.active_stake + profits;
     } else if (losses > 0) {
@@ -74,7 +63,17 @@ public(package) fun process_ggr_share(self: &mut Account, profits: u64, losses: 
         } else {
             self.active_stake = self.active_stake - losses;
         }
-    }
+    };
+    // Unlock the staked amount
+    if (self.unstake_requested) {
+        self.credit_balance = self.credit_balance + self.active_stake;
+        self.active_stake = 0;
+    };
+    // Activate the stake that was waiting for activation
+    self.active_stake = self.active_stake + self.inactive_stake;
+    self.inactive_stake = 0;
+    self.unstake_requested = false;
+    self.epoch = self.epoch + 1;
 }
 
 /// Returns a tuple (credit_balance, debit_balance) and resets their values.
