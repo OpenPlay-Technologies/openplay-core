@@ -6,7 +6,53 @@ use openplay::vault;
 use sui::coin::mint_for_testing;
 use sui::sui::SUI;
 use sui::test_scenario::{begin, next_epoch};
-use sui::test_utils::{destroy};
+use sui::test_utils::destroy;
+
+#[test]
+public fun activate_ok() { let addr = @0xA; let mut scenario = begin(addr); {
+        // Initialize balance manager with 100 MIST
+        let mut balance_manager = balance_manager::new(scenario.ctx());
+        let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
+        balance_manager.deposit(deposit_balance);
+
+        // Create empty vault
+        let mut vault = vault::empty(scenario.ctx());
+        assert!(vault.reserve_balance() == 0);
+
+        // Fund vault
+        vault.settle_balance_manager(0, 100, &mut balance_manager, false);
+        assert!(vault.reserve_balance() == 100);
+        assert!(balance_manager.balance() == 0);
+
+        // Activate game
+        vault.activate(50);
+        assert!(vault.play_balance() == 50);
+        assert!(vault.reserve_balance() == 50);
+
+        destroy(vault);
+        destroy(balance_manager);
+    }; scenario.end(); }
+
+#[test, expected_failure(abort_code = vault::EInsufficientFunds)]
+public fun activate_not_enough_funds() { let addr = @0xA; let mut scenario = begin(addr); {
+        // Initialize balance manager with 100 MIST
+        let mut balance_manager = balance_manager::new(scenario.ctx());
+        let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
+        balance_manager.deposit(deposit_balance);
+
+        // Create empty vault
+        let mut vault = vault::empty(scenario.ctx());
+        assert!(vault.reserve_balance() == 0);
+
+        // Fund vault
+        vault.settle_balance_manager(0, 100, &mut balance_manager, false);
+        assert!(vault.reserve_balance() == 100);
+        assert!(balance_manager.balance() == 0);
+
+        // Activate game
+        vault.activate(150);
+        abort 0
+    } }
 
 #[test]
 public fun settle_balance_manager_gameplay_ok() { let addr = @0xA; let mut scenario = begin(addr); {
@@ -100,8 +146,8 @@ public fun settle_balance_manager_insufficient_funds_vault() {
         let mut vault = vault::empty(scenario.ctx());
         assert!(vault.play_balance() == 0);
 
-        // Try to move 1 MIST from vaul to bm
-        vault.settle_balance_manager(1, 0, &mut balance_manager, true);
+        // Try to move 5 MIST from vaul to bm
+        vault.settle_balance_manager(5, 0, &mut balance_manager, true);
         abort 0
     }
 }
@@ -155,7 +201,7 @@ public fun process_fees_fail() {
 }
 
 #[test]
-public fun update_epoch(){
+public fun update_epoch() {
     let addr = @0xA;
     let target_balance = 100;
     let mut scenario = begin(addr);
@@ -168,14 +214,23 @@ public fun update_epoch(){
 
         // Advance epoch (enough funding)
         scenario.next_epoch(addr);
-        let (epoch_switch, prev_epoch, end_balance, play_balance_funded) = vault.process_end_of_day(target_balance, scenario.ctx());
+        let (
+            epoch_switch,
+            prev_epoch,
+            end_balance,
+            play_balance_funded,
+        ) = vault.process_end_of_day(scenario.ctx());
         assert!(epoch_switch);
         assert!(prev_epoch == 0);
         assert!(end_balance == 0);
         assert!(play_balance_funded == false); // The previous epoch was not funded, only the new (current) one is
         assert!(vault.epoch() == scenario.ctx().epoch());
+        assert!(vault.reserve_balance() == 150); // everything is in reserve because game is not activated
+        assert!(vault.play_balance() == 0); // Game is not funded yet
+        // Activate vault
+        vault.activate(target_balance);
         assert!(vault.reserve_balance() == 50); // 50 is left in reserve
-        assert!(vault.play_balance() == 100); // Game should be funded
+        assert!(vault.play_balance() == 100); // Game is funded now
 
         // Simulate some profits and deduce some fees
         vault.fund_play_balance_for_testing(20, scenario.ctx());
@@ -184,20 +239,34 @@ public fun update_epoch(){
         assert!(vault.reserve_balance() == 50); // the same
 
         // Update vault without advancing epoch, this should have no effect
-        let (epoch_switch, _prev_epoch, _end_balance, _play_balance_funded) = vault.process_end_of_day(target_balance, scenario.ctx());
+        let (
+            epoch_switch,
+            _prev_epoch,
+            _end_balance,
+            _play_balance_funded,
+        ) = vault.process_end_of_day(scenario.ctx());
         assert!(epoch_switch == false);
 
         // Advance epoch (enough funding, play_balance reset to target balance)
         scenario.next_epoch(addr);
-        let (epoch_switch, prev_epoch, end_balance, play_balance_funded) = vault.process_end_of_day(target_balance, scenario.ctx());
+        let (
+            epoch_switch,
+            prev_epoch,
+            end_balance,
+            play_balance_funded,
+        ) = vault.process_end_of_day(scenario.ctx());
         assert!(epoch_switch);
         assert!(prev_epoch == 1);
         assert!(end_balance == 110);
         assert!(play_balance_funded == true);
-        assert!(vault.play_balance() == 100);
-        assert!(vault.reserve_balance() == 60);
+        assert!(vault.play_balance() == 0);
+        assert!(vault.reserve_balance() == 160);
         assert!(vault.collected_owner_fees() == 5);
         assert!(vault.collected_protocol_fees() == 5);
+        // Activate vault
+        vault.activate(target_balance);
+        assert!(vault.reserve_balance() == 60); // 60 is left in reserve
+        assert!(vault.play_balance() == 100); // Game is funded again
 
         // Simulate losses and deduce some fees
         vault.burn_play_balance_for_testing(60, scenario.ctx());
@@ -207,10 +276,15 @@ public fun update_epoch(){
 
         // Advance epoch (not enough funding this time)
         scenario.next_epoch(addr);
-        let (epoch_switch, prev_epoch, end_balance, play_balance_funded) = vault.process_end_of_day(target_balance, scenario.ctx());
+        let (
+            epoch_switch,
+            prev_epoch,
+            end_balance,
+            play_balance_funded,
+        ) = vault.process_end_of_day(scenario.ctx());
         assert!(epoch_switch);
         assert!(prev_epoch == 2);
-        assert!(end_balance == 30);       
+        assert!(end_balance == 30);
         assert!(play_balance_funded == true);
         assert!(vault.play_balance() == 0);
         assert!(vault.reserve_balance() == 90);
@@ -219,6 +293,6 @@ public fun update_epoch(){
 
         destroy(vault);
     };
-    
+
     scenario.end();
 }

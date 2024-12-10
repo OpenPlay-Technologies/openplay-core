@@ -4,11 +4,15 @@
 /// The account serves a similar role as the account in deepbookv3.
 module openplay::account;
 
+// === Imports ===
+use openplay::constants::precision_error_allowance;
+
 // == Errors ==
 const EInvalidGgrShare: u64 = 1;
 const ECancellationWasRequested: u64 = 2;
 const EEpochMismatch: u64 = 3;
 const EEpochHasNotFinishedYet: u64 = 4;
+const EInvalidProfitsOrLosses: u64 = 5;
 
 // === Structs ===
 public struct Account has store {
@@ -57,11 +61,15 @@ public(package) fun process_end_of_day(self: &mut Account, epoch: u64, profits: 
     if (profits > 0) {
         self.active_stake = self.active_stake + profits;
     } else if (losses > 0) {
-        if (losses > self.active_stake) {
-            // This can only happen with small rounding errors
-            self.active_stake = 0
-        } else {
+        if (self.active_stake >= losses){
             self.active_stake = self.active_stake - losses;
+        }
+        else if (losses - self.active_stake <= precision_error_allowance()){
+            // Small rounding errors
+            self.active_stake = 0;
+        }
+        else {
+            abort EInvalidProfitsOrLosses
         }
     };
     // Unlock the staked amount

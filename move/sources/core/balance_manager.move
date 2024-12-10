@@ -40,7 +40,7 @@ public fun balance(self: &BalanceManager): u64 {
 // === Public-Package Functions ===
 /// Withdraws the provided amount from the `balance`. Fails if there are not sufficient funds.
 public fun withdraw(self: &mut BalanceManager, withdraw_amount: u64): Balance<SUI> {
-    assert!(self.balance.value() > withdraw_amount, EBalanceTooLow);
+    assert!(self.balance.value() >= withdraw_amount, EBalanceTooLow);
     self.balance.split(withdraw_amount)
 }
 

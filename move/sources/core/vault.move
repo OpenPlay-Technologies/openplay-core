@@ -6,6 +6,7 @@ module openplay::vault;
 use openplay::balance_manager::BalanceManager;
 use sui::balance::{Self, Balance};
 use sui::sui::SUI;
+use openplay::constants::{precision_error_allowance};
 
 // === Errors ===
 const EInsufficientFunds: u64 = 1;
@@ -17,7 +18,7 @@ public struct Vault has store {
     collected_owner_fees: Balance<SUI>,
     play_balance: Balance<SUI>,
     reserve_balance: Balance<SUI>,
-    play_balance_funded: bool
+    active: bool // A boolean indicating whether the vault has been activated by stake, and the play_balance funded
 }
 
 // === Public-View Functions ---
@@ -51,36 +52,41 @@ public(package) fun empty(ctx: &TxContext): Vault {
         collected_owner_fees: balance::zero(),
         play_balance: balance::zero(),
         reserve_balance: balance::zero(),
-        play_balance_funded: false
+        active: false
     }
 }
 
-/// Updates the vault on epoch switch.
-/// Returns true if the epoch was switched, followed by the previous epoch number, and the end balance of the house.
-/// If the epoch is switched, and there are enough funds available, the house will be funded to the target balance.
+/// Processes the end of day for the vault, if applicable.
+/// returns (epoch_switched, prev_epoch, end_of_day_balance, was_active)
+/// - `epoch_switched` is true if there was a new epoch, and the end of day was processed.
+/// - `prev_epoch` will be 0 if there was no epoch switch, and the old epoch number otherwise.
+/// - `end_of_day_balance` will be 0 if there was no epoch swith, and the last `play_balance` otherwise.
+/// - `was_active` will be false if there was no epoch switch, and the vault activation state otherwise. This
+/// says if the vault was activated in the previous epoch.
 public(package) fun process_end_of_day(
     self: &mut Vault,
-    target_balance: u64,
     ctx: &TxContext,
 ): (bool, u64, u64, bool) {
     if (self.epoch == ctx.epoch()) return (false, 0, 0, false);
-    let old_epoch = self.epoch;
-    let old_play_balance = self.play_balance.value();
-    let old_play_balance_funded = self.play_balance_funded;
+    let prev_epoch = self.epoch;
+    let end_of_day_balance = self.play_balance.value();
+    let was_active = self.active;
 
     // Move the house funds back to the reserve
     let leftover_balance = self.play_balance.withdraw_all();
     self.reserve_balance.join(leftover_balance);
-    self.play_balance_funded = false;
+    self.active = false;
 
-    // Check if the reserve is able to fund a fresh house
-    if (self.reserve_balance.value() >= target_balance) {
-        let fresh_play_balance = self.reserve_balance.split(target_balance);
-        self.play_balance.join(fresh_play_balance);
-        self.play_balance_funded = true;
-    };
     self.epoch = ctx.epoch();
-    return (true, old_epoch, old_play_balance, old_play_balance_funded)
+    return (true, prev_epoch, end_of_day_balance, was_active)
+}
+
+/// Activates the vault. This will set `active` to true, and fund the `play_balance` to the target_balance.
+public(package) fun activate(self: &mut Vault, target_balance: u64) {
+    assert!(self.reserve_balance.value() >= target_balance, EInsufficientFunds);
+    let fresh_play_balance = self.reserve_balance.split(target_balance);
+    self.play_balance.join(fresh_play_balance);
+    self.active = true;
 }
 
 /// Settles the balances between the `vault` and `balance_manager`.
@@ -98,12 +104,28 @@ public(package) fun settle_balance_manager(
         // Vault needs to pay the difference to the balance_manager
         let balance;
         if (game_play){
-            assert!(self.play_balance.value() >= amount_out - amount_in, EInsufficientFunds);
-            balance = self.play_balance.split(amount_out - amount_in);
+            if (self.play_balance.value() >= amount_out - amount_in){
+                balance = self.play_balance.split(amount_out - amount_in);
+            }
+            else if (amount_out - amount_in - self.play_balance.value() <= precision_error_allowance()) {
+                // Small precision errors
+                balance = self.play_balance.withdraw_all();
+            }
+            else {
+                abort EInsufficientFunds
+            }
         }
         else {
-            assert!(self.reserve_balance.value() >= amount_out - amount_in, EInsufficientFunds);
-            balance = self.reserve_balance.split(amount_out - amount_in);
+            if (self.reserve_balance.value() >= amount_out - amount_in){
+                balance = self.reserve_balance.split(amount_out - amount_in);
+            }
+            else if (amount_out - amount_in - self.reserve_balance.value() <= precision_error_allowance()) {
+                // This can only happen with small precision errors
+                balance = self.reserve_balance.withdraw_all();
+            }
+            else {
+                abort EInsufficientFunds
+            }  
         };
         balance_manager.deposit(balance);
     } else if (amount_in > amount_out) {

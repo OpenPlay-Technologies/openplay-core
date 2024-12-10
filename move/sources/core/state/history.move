@@ -3,6 +3,7 @@ module openplay::history;
 
 use std::uq32_32::{from_quotient, int_mul, add, sub, from_int};
 use sui::table::{Self, Table};
+use openplay::constants::precision_error_allowance;
 
 // === Errors ===
 const EEpochMismatch: u64 = 1;
@@ -123,7 +124,6 @@ public(package) fun process_end_of_day(
     epoch: u64,
     profits: u64,
     losses: u64,
-    // house_balance: u64,
     ctx: &TxContext,
 ) {
     // We can only process an epoch after it has been finished
@@ -156,12 +156,16 @@ public(package) fun process_end_of_day(
     if (profits > 0) {
         new_stake_amount = new_stake_amount + profits
     } else if (losses > 0) {
-        if (losses > new_stake_amount) {
-            // Can only happen with small rounding errors
-            new_stake_amount = 0;
-        } else {
+        if (new_stake_amount >= losses){
             new_stake_amount = new_stake_amount - losses;
-        };
+        }
+        else if (losses - new_stake_amount <= precision_error_allowance()){
+            // Small rounding errors
+            new_stake_amount = 0;
+        }
+        else {
+            abort EInvalidProfitsOrLosses
+        }
     };
 
     // The pending unstake need to be actualized to get the actual unstake amount

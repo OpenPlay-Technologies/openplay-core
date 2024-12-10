@@ -117,8 +117,14 @@ public fun unstake(self: &mut Game, balance_manager: &mut BalanceManager, ctx: &
     self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
 }
 
-public(package) fun active_stake(self: &mut Game, balance_manager: &BalanceManager, ctx: &TxContext): u64 {
-    self.state.active_stake(balance_manager.id(), ctx)
+/// Gets the active stake and also settles the open balances with the balance_manager
+public fun active_stake(self: &mut Game, balance_manager: &mut BalanceManager, ctx: &TxContext): u64 {
+    // Make sure the vault is up to date (end of day is processed for previous days)
+    self.process_end_of_day(ctx);
+
+    let (credit_balance, debit_balance, active_stake) = self.state.active_stake(balance_manager.id(), ctx);
+    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
+    active_stake
 }
 
 // == Private Functions ==
@@ -126,19 +132,19 @@ public(package) fun active_stake(self: &mut Game, balance_manager: &BalanceManag
 /// The vault saves the end of day balance for the house and resets to the target balance if there are enough funds available.
 /// Note: there can be a number of epochs in between without any activity.
 fun process_end_of_day(self: &mut Game, ctx: &TxContext) {
-    let (epoch_switch, prev_epoch, end_balance, play_balance_funded) = self
+    let (epoch_switched, prev_epoch, end_of_day_balance, was_active) = self
         .vault
-        .process_end_of_day(self.target_balance, ctx);
+        .process_end_of_day(ctx);
 
-    if (epoch_switch) {
+    if (epoch_switched) {
         let profits: u64;
         let losses: u64;
-        if (play_balance_funded){
-            if (end_balance > self.target_balance) {
-                profits = end_balance - self.target_balance;
+        if (was_active){
+            if (end_of_day_balance > self.target_balance) {
+                profits = end_of_day_balance - self.target_balance;
                 losses = 0;
             } else {
-                losses = self.target_balance - end_balance;
+                losses = self.target_balance - end_of_day_balance;
                 profits = 0;
             };
         }
@@ -147,7 +153,10 @@ fun process_end_of_day(self: &mut Game, ctx: &TxContext) {
             profits = 0;
             losses = 0;
         };
-        self.state.process_end_of_day(prev_epoch, profits, losses, ctx);
+        let new_stake_amount = self.state.process_end_of_day(prev_epoch, profits, losses, ctx);
+        if (new_stake_amount >= self.target_balance){
+            self.vault.activate(self.target_balance);
+        };
     }
 }
 

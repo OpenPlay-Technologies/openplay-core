@@ -377,7 +377,7 @@ public fun stake_amount_correctly_transferred_bankrupt(){
     // Transfer next epoch with bankrupt losses
     // We make the losses even more than the full 100. This is only possible because of precision errors in practice
     scenario.next_epoch(addr);
-    history.process_end_of_day(scenario.ctx().epoch() - 1, 0, 105, scenario.ctx());
+    history.process_end_of_day(scenario.ctx().epoch() - 1, 0, 101, scenario.ctx());
 
     // The new stakers should never be taking any sort of losses from the previous epoch
     assert!(history.current_stake() == 5);

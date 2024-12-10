@@ -94,14 +94,18 @@ public(package) fun process_unstake(
 }
 
 /// Advances the epoch: updates the history and saves the end of day of the house.
+/// Fails if the epoch that is trying to be processed is not the last known one.
+/// Also fails if the epoch is in the future or not finished yet.
+/// Returns the stake amount for the new epoch.
 public(package) fun process_end_of_day(
     self: &mut State,
     epoch: u64,
     profits: u64,
     losses: u64,
     ctx: &TxContext,
-) {
+): u64 {
     self.history.process_end_of_day(epoch, profits, losses, ctx);
+    self.history.current_stake()
 }
 
 public(package) fun new(ctx: &mut TxContext): State {
@@ -125,9 +129,12 @@ public(package) fun settle_account(
     account.settle()
 }
 
-public(package) fun active_stake(self: &mut State, balance_manager_id: ID, ctx: &TxContext): u64 {
+/// Returns (credit_balance, debit_balance, active_stake)
+public(package) fun active_stake(self: &mut State, balance_manager_id: ID, ctx: &TxContext): (u64, u64, u64) {
     self.update_account(balance_manager_id, ctx);
-    self.accounts[balance_manager_id].active_stake()
+    let active_stake = self.accounts[balance_manager_id].active_stake();
+    let (credit_balance, debit_balance) = self.accounts[balance_manager_id].settle();
+    (credit_balance, debit_balance, active_stake)
 }
 
 // == Private Functions ==
