@@ -4,16 +4,17 @@ use openplay::coin_flip_const::{
     head_result,
     tail_result,
     house_bias_result,
-    max_house_edge,
-    max_payout_factor,
+    max_house_edge_bps,
+    max_payout_factor_bps,
     place_bet_action
 };
 use openplay::coin_flip_context::{Self, CoinFlipContext, player_won};
 use openplay::coin_flip_state::{Self, CoinFlipState};
 use openplay::transaction::{Transaction, bet, win};
 use std::string::String;
-use sui::random::RandomGenerator;
+use sui::random::{Random, RandomGenerator};
 use sui::table::{Self, Table};
+use std::uq32_32::{UQ32_32, from_quotient, int_mul, from_int};
 
 // === Errors ===
 const EUnsupportedStake: u64 = 1;
@@ -26,8 +27,8 @@ const EUnsupportedAction: u64 = 5;
 public struct CoinFlip has store {
     max_stake: u64,
     contexts: Table<ID, CoinFlipContext>,
-    house_edge: u64, // Percentage bias in favor of the house (0 to MAX_HOUSE_EDGE, where MAX_HOUSE_EDGE = 100%)
-    payout_factor: u64, // Percentage multiplier of the payout factor,
+    house_edge_bps: u64, // House bias in basis points (e.g. `100` will give the house a 1% change of winning)
+    payout_factor_bps: u64, // Payout factor in basis points (e.g. `20_000` will give 2x or 200% of stake)
     state: CoinFlipState, // Global state specific to the CoinFLip game
 }
 
@@ -42,14 +43,14 @@ public enum InteractionType has copy, drop, store {
 }
 
 // === Public-Mutative Functions ===
-public fun new(max_stake: u64, house_edge: u64, payout_factor: u64, ctx: &mut TxContext): CoinFlip {
-    assert!(house_edge < max_house_edge(), EUnsupportedHouseEdge);
-    assert!(payout_factor < max_payout_factor(), EUnsupportedPayoutFactor);
+public fun new(max_stake: u64, house_edge_bps: u64, payout_factor_bps: u64, ctx: &mut TxContext): CoinFlip {
+    assert!(house_edge_bps < max_house_edge_bps(), EUnsupportedHouseEdge);
+    assert!(payout_factor_bps < max_payout_factor_bps(), EUnsupportedPayoutFactor);
     CoinFlip {
         max_stake,
         contexts: table::new(ctx),
-        house_edge,
-        payout_factor,
+        house_edge_bps,
+        payout_factor_bps,
         state: coin_flip_state::empty(),
     }
 }
@@ -59,18 +60,23 @@ public fun transactions(interaction: &Interaction): vector<Transaction> {
     interaction.transactions
 }
 
+public fun payout_factor(self: &CoinFlip): UQ32_32 {
+    from_quotient(self.payout_factor_bps, 10_000)
+}
+
 // === Public-Package Functions ===
 public(package) fun interact(
     self: &mut CoinFlip,
     interaction: &mut Interaction,
-    rand: &mut RandomGenerator,
+    rand: &Random,
+    ctx: &mut TxContext
 ) {
     // Validate the interaction
     self.validate_interact(interaction);
 
     // Extract context and params
-    let house_edge = self.house_edge;
-    let payout_factor = self.payout_factor;
+    let house_edge_bps = self.house_edge_bps;
+    let payout_factor = self.payout_factor();
 
     // Ensure context
     self.ensure_context(interaction.balance_manager_id);
@@ -80,10 +86,10 @@ public(package) fun interact(
     interact_int(
         context,
         interaction.interact_type,
-        house_edge,
+        house_edge_bps,
         payout_factor,
         &mut interaction.transactions,
-        rand,
+        &mut rand.new_generator(ctx),
     );
 
     // Update the state
@@ -114,7 +120,12 @@ public(package) fun new_interact(
 
 // Gets the max payout of the game. This ensures that the vault has sufficient funds to accept the bet.
 public(package) fun max_payout(self: &CoinFlip, stake: u64): u64 {
-    stake / 100 * self.payout_factor
+    int_mul(stake, self.payout_factor())
+}
+
+public(package) fun get_context(self: &mut CoinFlip, balance_manager_id: ID): &CoinFlipContext {
+    self.ensure_context(balance_manager_id);
+    self.contexts.borrow(balance_manager_id)
 }
 
 // === Private Functions ===
@@ -122,7 +133,7 @@ fun interact_int(
     context: &mut CoinFlipContext,
     interaction_type: InteractionType,
     house_edge: u64,
-    payout_factor: u64,
+    payout_factor: UQ32_32,
     transactions: &mut vector<Transaction>,
     rand: &mut RandomGenerator,
 ) {
@@ -132,9 +143,9 @@ fun interact_int(
             transactions.push_back(bet(stake));
             context.bet(stake, prediction);
             // Generate result
-            let x = rand.generate_u64_in_range(0, house_edge);
+            let x = rand.generate_u64_in_range(0, 10_000);
             let result;
-            if (x <= house_edge) {
+            if (x < house_edge) {
                 result = house_bias_result();
             } else if (x % 2 == 0) {
                 result = head_result();
@@ -144,11 +155,13 @@ fun interact_int(
             // Update context
             context.settle(result);
             // Pay out winnings, or zero win if player lost
+            let payout;
             if (context.player_won()) {
-                transactions.push_back(win(stake / 100 * payout_factor));
+                payout = payout_factor;
             } else {
-                transactions.push_back(win(0));
+                payout = from_int(0);
             };
+            transactions.push_back(win(int_mul(stake, payout)));
         },
     }
 }

@@ -1,3 +1,4 @@
+#[test_only]
 module openplay::game_tests;
 
 use openplay::balance_manager;
@@ -212,7 +213,6 @@ public fun complete_flow_share_profits_multi_round() {
     game.stake(&mut another_balance_manager, 80_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 420_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
-
 
     // Advance epoch and play
     // a bet of 10k and a win of 5k

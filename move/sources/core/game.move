@@ -4,10 +4,11 @@ module openplay::game;
 
 use openplay::balance_manager::BalanceManager;
 use openplay::coin_flip::{Self, CoinFlip};
+use openplay::registry::Registry;
 use openplay::state::{Self, State};
 use openplay::transaction::Transaction;
 use openplay::vault::{Self, Vault};
-use std::option::none;
+use std::option::{none, some};
 use std::string::String;
 use sui::random::Random;
 
@@ -39,11 +40,31 @@ public struct Game has key {
 
 // == Public-View Functions==
 
-
 // === Public-Mutative Functions ===
 public fun play_balance(self: &mut Game, ctx: &mut TxContext): u64 {
     self.process_end_of_day(ctx);
     self.vault.play_balance()
+}
+
+public fun new_coin_flip(
+    registry: &mut Registry,
+    target_balance: u64,
+    max_stake: u64,
+    house_edge_bps: u64,
+    payout_factor_bps: u64,
+    ctx: &mut TxContext,
+): Game {
+    let coin_flip = coin_flip::new(max_stake, house_edge_bps, payout_factor_bps, ctx);
+    let game = Game {
+        id: object::new(ctx),
+        game_type: GameType::CoinFlip,
+        coin_flip: some(coin_flip),
+        vault: vault::empty(ctx),
+        state: state::new(ctx),
+        target_balance,
+    };
+    registry.register_game(game.id.to_inner());
+    game
 }
 
 /// Interact entry function that can be used when the game is of type CoinFlip.
@@ -71,7 +92,7 @@ entry fun interact_coin_flip(
         prediction,
         stake,
     );
-    self.coin_flip.borrow_mut().interact(&mut interact, &mut random.new_generator(ctx));
+    self.coin_flip.borrow_mut().interact(&mut interact, random, ctx);
     // Process transactions by state
     let (credit_balance, debit_balance, owner_fee, protocol_fee) = self
         .state
@@ -118,11 +139,17 @@ public fun unstake(self: &mut Game, balance_manager: &mut BalanceManager, ctx: &
 }
 
 /// Gets the active stake and also settles the open balances with the balance_manager
-public fun active_stake(self: &mut Game, balance_manager: &mut BalanceManager, ctx: &TxContext): u64 {
+public fun active_stake(
+    self: &mut Game,
+    balance_manager: &mut BalanceManager,
+    ctx: &TxContext,
+): u64 {
     // Make sure the vault is up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
 
-    let (credit_balance, debit_balance, active_stake) = self.state.active_stake(balance_manager.id(), ctx);
+    let (credit_balance, debit_balance, active_stake) = self
+        .state
+        .active_stake(balance_manager.id(), ctx);
     self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
     active_stake
 }
@@ -139,7 +166,7 @@ fun process_end_of_day(self: &mut Game, ctx: &TxContext) {
     if (epoch_switched) {
         let profits: u64;
         let losses: u64;
-        if (was_active){
+        if (was_active) {
             if (end_of_day_balance > self.target_balance) {
                 profits = end_of_day_balance - self.target_balance;
                 losses = 0;
@@ -147,14 +174,13 @@ fun process_end_of_day(self: &mut Game, ctx: &TxContext) {
                 losses = self.target_balance - end_of_day_balance;
                 profits = 0;
             };
-        }
-        else {
+        } else {
             // The house was not funded so no profits or losses were made
             profits = 0;
             losses = 0;
         };
         let new_stake_amount = self.state.process_end_of_day(prev_epoch, profits, losses, ctx);
-        if (new_stake_amount >= self.target_balance){
+        if (new_stake_amount >= self.target_balance) {
             self.vault.activate(self.target_balance);
         };
     }

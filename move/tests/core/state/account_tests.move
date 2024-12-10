@@ -1,8 +1,9 @@
+#[test_only]
 module openplay::account_tests;
 
+use openplay::account;
 use sui::test_scenario::begin;
 use sui::test_utils::destroy;
-use openplay::account::{Self};
 
 #[test]
 public fun settle_ok() {
@@ -80,7 +81,7 @@ public fun stake_unstake_ok() {
 }
 
 #[test, expected_failure(abort_code = account::ECancellationWasRequested)]
-public fun cannot_unstake_twice(){
+public fun cannot_unstake_twice() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 
@@ -97,7 +98,7 @@ public fun cannot_unstake_twice(){
 }
 
 #[test, expected_failure(abort_code = account::ECancellationWasRequested)]
-public fun cannot_stake_after_unstake(){
+public fun cannot_stake_after_unstake() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 
@@ -114,7 +115,7 @@ public fun cannot_stake_after_unstake(){
 }
 
 #[test]
-public fun process_ggr_share_ok(){
+public fun process_ggr_share_ok() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 

@@ -41,6 +41,10 @@ public fun status(self: &CoinFlipContext): String {
     self.status
 }
 
+public fun prediction(self: &CoinFlipContext): String {
+    self.prediction
+}
+
 // === Public-Package Functions ===
 public(package) fun empty(): CoinFlipContext {
     CoinFlipContext {

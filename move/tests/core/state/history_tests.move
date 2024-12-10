@@ -1,12 +1,13 @@
+#[test_only]
 module openplay::history_tests;
 
-use sui::test_scenario::{begin};
-use sui::test_utils::{destroy};
 use openplay::history::{Self, add_pending_stake, add_pending_unstake, unstake_immediately};
 use std::uq32_32::{int_mul, from_quotient, add, from_int, sub};
+use sui::test_scenario::begin;
+use sui::test_utils::destroy;
 
 #[test]
-public fun pending_stake_tests(){
+public fun pending_stake_tests() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 
@@ -33,7 +34,7 @@ public fun pending_stake_tests(){
 }
 
 #[test, expected_failure(abort_code = history::ECannotUnstakeMoreThanStaked)]
-public fun unstake_too_much(){
+public fun unstake_too_much() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 
@@ -45,7 +46,7 @@ public fun unstake_too_much(){
 }
 
 #[test, expected_failure(abort_code = history::EEndOfDayNotAvailable)]
-public fun end_of_day_empty(){
+public fun end_of_day_empty() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 
@@ -63,7 +64,7 @@ public fun end_of_day_available() {
 
     // Create empty history
     let mut history = history::empty(scenario.ctx());
-    
+
     // Process end of day for epoch 0: profits of 100 and end of day balance of 200
     scenario.next_epoch(addr);
     history.process_end_of_day(0, 100, 0, scenario.ctx());
@@ -89,7 +90,7 @@ public fun cannot_process_eod_before_epoch_ended() {
 }
 
 #[test, expected_failure(abort_code = history::EEpochMismatch)]
-public fun cannot_process_eod_for_wrong_epoch(){
+public fun cannot_process_eod_for_wrong_epoch() {
     let addr = @0xA;
     let mut scenario = begin(addr);
     // Initialize history to epoch 0
@@ -106,7 +107,7 @@ public fun cannot_process_eod_for_wrong_epoch(){
 }
 
 #[test, expected_failure(abort_code = history::EInvalidProfitsOrLosses)]
-public fun cannot_process_eod_wrong_profits_or_losses(){
+public fun cannot_process_eod_wrong_profits_or_losses() {
     let addr = @0xA;
     let mut scenario = begin(addr);
     // Initialize history to epoch 0
@@ -120,7 +121,7 @@ public fun cannot_process_eod_wrong_profits_or_losses(){
 }
 
 #[test]
-public fun stake_amount_correctly_transferred_basic(){
+public fun stake_amount_correctly_transferred_basic() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -173,7 +174,7 @@ public fun stake_amount_correctly_transferred_basic(){
 }
 
 #[test]
-public fun stake_amount_correctly_transferred_profits(){
+public fun stake_amount_correctly_transferred_profits() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -207,7 +208,8 @@ public fun stake_amount_correctly_transferred_profits(){
     // Plus 30 of the profits
 
     let roi = from_quotient(30, 100);
-    let expected_value = 100 // From last epoch
+    let expected_value =
+        100 // From last epoch
     + 30 // The distributed profits
     - int_mul(10, add(from_int(1), roi))  // The unstaked amount
     + 20; // The new added stake
@@ -221,7 +223,7 @@ public fun stake_amount_correctly_transferred_profits(){
 }
 
 #[test]
-public fun stake_amount_correctly_transferred_losses(){
+public fun stake_amount_correctly_transferred_losses() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -256,7 +258,8 @@ public fun stake_amount_correctly_transferred_losses(){
     // This gives 83
 
     let negative_roi = from_quotient(30, 100);
-    let expected_value = 100 // From last epoch
+    let expected_value =
+        100 // From last epoch
     - 30 // The distributed losses
     - int_mul(10, sub(from_int(1), negative_roi))  // The unstaked amount
     + 20; // The new added stake
@@ -270,7 +273,7 @@ public fun stake_amount_correctly_transferred_losses(){
 }
 
 #[test]
-public fun stake_amount_correctly_transferred_full_unstake_profits(){
+public fun stake_amount_correctly_transferred_full_unstake_profits() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -298,7 +301,8 @@ public fun stake_amount_correctly_transferred_full_unstake_profits(){
     history.process_end_of_day(scenario.ctx().epoch() - 1, 7, 0, scenario.ctx());
 
     let roi = from_quotient(7, 100);
-    let expected_value = 100 // From last epoch
+    let expected_value =
+        100 // From last epoch
     + 7 // The distributed profits
     - int_mul(100, add(from_int(1), roi))  // The unstaked amount
     + 5; // The new added stake
@@ -312,7 +316,7 @@ public fun stake_amount_correctly_transferred_full_unstake_profits(){
 }
 
 #[test]
-public fun stake_amount_correctly_transferred_full_unstake_losses(){
+public fun stake_amount_correctly_transferred_full_unstake_losses() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -340,7 +344,8 @@ public fun stake_amount_correctly_transferred_full_unstake_losses(){
     history.process_end_of_day(scenario.ctx().epoch() - 1, 0, 7, scenario.ctx());
 
     let negative_roi = from_quotient(7, 100);
-    let expected_value = 100 // From last epoch
+    let expected_value =
+        100 // From last epoch
     - 7 // The distributed losses
     - int_mul(100, sub(from_int(1), negative_roi))  // The unstaked amount
     + 5; // The new added stake
@@ -353,7 +358,7 @@ public fun stake_amount_correctly_transferred_full_unstake_losses(){
 }
 
 #[test]
-public fun stake_amount_correctly_transferred_bankrupt(){
+public fun stake_amount_correctly_transferred_bankrupt() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -387,7 +392,7 @@ public fun stake_amount_correctly_transferred_bankrupt(){
 }
 
 #[test]
-public fun calculate_ggr_share_losses(){
+public fun calculate_ggr_share_losses() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -406,7 +411,10 @@ public fun calculate_ggr_share_losses(){
     scenario.next_epoch(addr);
     history.process_end_of_day(scenario.ctx().epoch() - 1, 0, 31, scenario.ctx());
 
-    let (profits_no_stake, losses_no_stake) = history.calculate_ggr_share(scenario.ctx().epoch() - 1, 0);
+    let (profits_no_stake, losses_no_stake) = history.calculate_ggr_share(
+        scenario.ctx().epoch() - 1,
+        0,
+    );
     assert!(losses_no_stake == 0);
     assert!(profits_no_stake == 0);
 
@@ -416,7 +424,10 @@ public fun calculate_ggr_share_losses(){
     assert!(eod.day_losses() == 31);
     assert!(eod.day_profits() == 0);
 
-    let (profits_full_stake,losses_full_stake) = history.calculate_ggr_share(scenario.ctx().epoch() - 1, 100);
+    let (profits_full_stake, losses_full_stake) = history.calculate_ggr_share(
+        scenario.ctx().epoch() - 1,
+        100,
+    );
     assert!(losses_full_stake == 31);
     assert!(profits_full_stake == 0);
 
@@ -433,7 +444,7 @@ public fun calculate_ggr_share_losses(){
 }
 
 #[test]
-public fun calculate_ggr_share_profits(){
+public fun calculate_ggr_share_profits() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
@@ -452,7 +463,10 @@ public fun calculate_ggr_share_profits(){
     scenario.next_epoch(addr);
     history.process_end_of_day(scenario.ctx().epoch() - 1, 81, 0, scenario.ctx());
 
-    let (profits_no_stake, losses_no_stake) = history.calculate_ggr_share(scenario.ctx().epoch() - 1, 0);
+    let (profits_no_stake, losses_no_stake) = history.calculate_ggr_share(
+        scenario.ctx().epoch() - 1,
+        0,
+    );
     assert!(losses_no_stake == 0);
     assert!(profits_no_stake == 0);
 
@@ -462,7 +476,10 @@ public fun calculate_ggr_share_profits(){
     assert!(eod.day_losses() == 0);
     assert!(eod.day_profits() == 81);
 
-    let (profits_full_stake,losses_full_stake) = history.calculate_ggr_share(scenario.ctx().epoch() - 1, 100);
+    let (profits_full_stake, losses_full_stake) = history.calculate_ggr_share(
+        scenario.ctx().epoch() - 1,
+        100,
+    );
     assert!(losses_full_stake == 0);
     assert!(profits_full_stake == 81);
 

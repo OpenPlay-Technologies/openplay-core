@@ -19,6 +19,16 @@ public struct CoinFlipState has store {
     recent_throws: vector<String>,
 }
 
+// === Public-View Functions ===
+/// Returns (nb_of_heads, nb_of_tails, nb_of_house_bias)
+public fun counters(self: &CoinFlipState): (u64, u64, u64) {
+    (self.number_of_heads, self.number_of_tails, self.number_of_house_bias)
+}
+
+public fun recent_throws(self: &CoinFlipState): vector<String> {
+    self.recent_throws
+}
+
 // === Public-Mutative Functions
 public fun empty(): CoinFlipState {
     CoinFlipState {
@@ -49,3 +59,5 @@ public fun process_context(self: &mut CoinFlipState, ctx: &CoinFlipContext) {
         self.number_of_tails = self.number_of_tails + 1
     }
 }
+
+// === Public-Package Functions ===

@@ -1,3 +1,4 @@
+#[test_only]
 module openplay::state_tests;
 
 use openplay::balance_manager;
@@ -66,7 +67,7 @@ public fun stake_unstake_no_gameplay_ok() {
     // Advance epoch without any profits / losses
     scenario.next_epoch(addr);
     state.process_end_of_day(scenario.ctx().epoch() - 1, 0, 0, scenario.ctx());
-    
+
     // Settle remaining balances on the account: should get the 100 now
     let (credit_balance, debit_balance) = state.settle_account(bm.id(), scenario.ctx());
     assert!(credit_balance == 100);
@@ -76,7 +77,6 @@ public fun stake_unstake_no_gameplay_ok() {
     destroy(state);
     scenario.end();
 }
-
 
 #[test]
 public fun stake_unstake_profits_ok() {
@@ -110,7 +110,7 @@ public fun stake_unstake_profits_ok() {
     // Advance epoch with a profit of 10
     scenario.next_epoch(addr);
     state.process_end_of_day(scenario.ctx().epoch() - 1, 10, 0, scenario.ctx());
-    
+
     // Settle remaining balances on the account: should get the 100 now (bcs of unstake) + a shared profit of 5 (we had 100 out of 200 active stake)
     let (credit_balance, debit_balance) = state.settle_account(bm.id(), scenario.ctx());
     assert!(credit_balance == 105);
@@ -153,7 +153,7 @@ public fun stake_unstake_losses_ok() {
     // Advance epoch with a loss of 10
     scenario.next_epoch(addr);
     state.process_end_of_day(scenario.ctx().epoch() - 1, 0, 10, scenario.ctx());
-    
+
     // Settle remaining balances on the account: should get the 100 now (bcs of unstake) - a shared loss of 5 (we had 100 out of 200 active stake)
     let (credit_balance, debit_balance) = state.settle_account(bm.id(), scenario.ctx());
     assert!(credit_balance == 95);
