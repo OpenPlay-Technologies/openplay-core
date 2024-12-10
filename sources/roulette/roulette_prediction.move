@@ -73,7 +73,7 @@ public(package) fun validate_predictions(predictions: vector<RoulettePrediction>
 /// === Private Functions ===
 
 
-fun is_valid_prediction(self: &RoulettePrediction, wheel_type: String) : bool {
+fun is_valid_prediction(self: &RoulettePrediction, wheel_type: String) : bool { // i prob need to add extra validation that the numbers themselves are valid combinations...
     if (self.bet_type == straight_up_bet()) {
         (self.numbers).length() == 1
     } else if (self.bet_type == split_bet()) {
