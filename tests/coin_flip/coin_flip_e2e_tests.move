@@ -50,7 +50,7 @@ public fun success_flow_win() {
     // Create a balance manager with 10_000 stake
     let mut balance_manager = balance_manager::new(scenario.ctx());
     let deposit_balance = mint_for_testing<SUI>(10_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
 
     // Place 1_000 bet on head
     let interact = coin_flip_game.interact_coin_flip(
@@ -112,7 +112,7 @@ public fun success_flow_lose() {
     // Create a balance manager with 10_000 stake
     let mut balance_manager = balance_manager::new(scenario.ctx());
     let deposit_balance = mint_for_testing<SUI>(10_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
 
     // Place 1_000 bet on tail
     let interact = coin_flip_game.interact_coin_flip(

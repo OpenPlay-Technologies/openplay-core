@@ -5,8 +5,8 @@
 /// This will likely be added later.
 module openplay::balance_manager;
 
-use sui::balance;
-use sui::balance::Balance;
+use sui::balance::{Self, Balance};
+use sui::coin::Coin;
 use sui::sui::SUI;
 
 // === Errors ===
@@ -20,10 +20,24 @@ public struct BalanceManager has key, store {
 
 // === Public-Mutative Functions ===
 public fun new(ctx: &mut TxContext): BalanceManager {
-    BalanceManager{
+    BalanceManager {
         id: object::new(ctx),
-        balance: balance::zero()
+        balance: balance::zero(),
     }
+}
+
+/// Deposits the provided balance into the `balance`.
+public fun deposit(self: &mut BalanceManager, to_deposit: Coin<SUI>) {
+    self.balance.join(to_deposit.into_balance());
+}
+
+public fun withdraw(
+    self: &mut BalanceManager,
+    withdraw_amount: u64,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    assert!(self.balance.value() >= withdraw_amount, EBalanceTooLow);
+    self.balance.split(withdraw_amount).into_coin(ctx)
 }
 
 // === Public-View Functions ===
@@ -39,12 +53,12 @@ public fun balance(self: &BalanceManager): u64 {
 
 // === Public-Package Functions ===
 /// Withdraws the provided amount from the `balance`. Fails if there are not sufficient funds.
-public fun withdraw(self: &mut BalanceManager, withdraw_amount: u64): Balance<SUI> {
+public(package) fun withdraw_int(self: &mut BalanceManager, withdraw_amount: u64): Balance<SUI> {
     assert!(self.balance.value() >= withdraw_amount, EBalanceTooLow);
     self.balance.split(withdraw_amount)
 }
 
 /// Deposits the provided balance into the `balance`.
-public fun deposit(self: &mut BalanceManager, to_deposit: Balance<SUI>) {
+public(package) fun deposit_int(self: &mut BalanceManager, to_deposit: Balance<SUI>) {
     self.balance.join(to_deposit);
 }

@@ -3,3 +3,4 @@
 - Make a PLAY governance token such that stakers of this token receive the protocol fee, and they can vote on proposals to change fee structures
 - AUDIT!! integer overflow, random vulnerabilities (gas cost per flow), and other possible vulnerabilities
 - Make it so that the game can also be activated on a new stake transactions, and not just on epoch change
+- pending stake should only become activated stake if the game managed to start

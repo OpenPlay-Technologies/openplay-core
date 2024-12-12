@@ -11,6 +11,7 @@ use openplay::vault::{Self, Vault};
 use std::option::{none, some};
 use std::string::String;
 use sui::random::Random;
+use sui::transfer::share_object;
 
 // === Errors ===
 const EInvalidGameType: u64 = 1;
@@ -41,6 +42,10 @@ public struct Game has key {
 // == Public-View Functions==
 
 // === Public-Mutative Functions ===
+public fun share(self: Game) {
+    share_object(self)
+}
+
 public fun play_balance(self: &mut Game, ctx: &mut TxContext): u64 {
     self.process_end_of_day(ctx);
     self.vault.play_balance()

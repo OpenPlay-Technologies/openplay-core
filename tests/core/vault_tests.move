@@ -13,7 +13,7 @@ public fun activate_ok() { let addr = @0xA; let mut scenario = begin(addr); {
         // Initialize balance manager with 100 MIST
         let mut balance_manager = balance_manager::new(scenario.ctx());
         let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
-        balance_manager.deposit(deposit_balance);
+        balance_manager.deposit_int(deposit_balance);
 
         // Create empty vault
         let mut vault = vault::empty(scenario.ctx());
@@ -38,7 +38,7 @@ public fun activate_not_enough_funds() { let addr = @0xA; let mut scenario = beg
         // Initialize balance manager with 100 MIST
         let mut balance_manager = balance_manager::new(scenario.ctx());
         let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
-        balance_manager.deposit(deposit_balance);
+        balance_manager.deposit_int(deposit_balance);
 
         // Create empty vault
         let mut vault = vault::empty(scenario.ctx());
@@ -59,7 +59,7 @@ public fun settle_balance_manager_gameplay_ok() { let addr = @0xA; let mut scena
         // Initialize balance manager with 100 MIST
         let mut balance_manager = balance_manager::new(scenario.ctx());
         let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
-        balance_manager.deposit(deposit_balance);
+        balance_manager.deposit_int(deposit_balance);
 
         // Create empty vault
         let mut vault = vault::empty(scenario.ctx());
@@ -89,7 +89,7 @@ public fun settle_balance_manager_reserve_ok() { let addr = @0xA; let mut scenar
         // Initialize balance manager with 100 MIST
         let mut balance_manager = balance_manager::new(scenario.ctx());
         let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
-        balance_manager.deposit(deposit_balance);
+        balance_manager.deposit_int(deposit_balance);
 
         // Create empty vault
         let mut vault = vault::empty(scenario.ctx());
@@ -122,7 +122,7 @@ public fun settle_balance_manager_insufficient_funds_bm() {
         // Initialize balance manager with 100 MIST
         let mut balance_manager = balance_manager::new(scenario.ctx());
         let deposit_balance = mint_for_testing<SUI>(100, scenario.ctx()).into_balance();
-        balance_manager.deposit(deposit_balance);
+        balance_manager.deposit_int(deposit_balance);
 
         // Create empty vault
         let mut vault = vault::empty(scenario.ctx());

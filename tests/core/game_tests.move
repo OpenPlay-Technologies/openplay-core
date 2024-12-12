@@ -32,14 +32,14 @@ public fun complete_flow_share_losses() {
 
     // Stake 20_000 on first balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 20_000, scenario.ctx());
     assert!(balance_manager.balance() == 480_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 
     // Stake 80_000 on second balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    another_balance_manager.deposit(deposit_balance);
+    another_balance_manager.deposit_int(deposit_balance);
     game.stake(&mut another_balance_manager, 80_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 420_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
@@ -117,14 +117,14 @@ public fun complete_flow_share_profits() {
 
     // Stake 20_000 on first balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 20_000, scenario.ctx());
     assert!(balance_manager.balance() == 480_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 
     // Stake 80_000 on second balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    another_balance_manager.deposit(deposit_balance);
+    another_balance_manager.deposit_int(deposit_balance);
     game.stake(&mut another_balance_manager, 80_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 420_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
@@ -202,14 +202,14 @@ public fun complete_flow_share_profits_multi_round() {
 
     // Stake 20_000 on first balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 20_000, scenario.ctx());
     assert!(balance_manager.balance() == 480_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 
     // Stake 80_000 on second balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    another_balance_manager.deposit(deposit_balance);
+    another_balance_manager.deposit_int(deposit_balance);
     game.stake(&mut another_balance_manager, 80_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 420_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
@@ -272,14 +272,14 @@ public fun complete_flow_profits_and_losses_multi_round() {
 
     // Stake 20_000 on first balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 20_000, scenario.ctx());
     assert!(balance_manager.balance() == 480_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 
     // Stake 80_000 on second balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    another_balance_manager.deposit(deposit_balance);
+    another_balance_manager.deposit_int(deposit_balance);
     game.stake(&mut another_balance_manager, 80_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 420_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
@@ -343,14 +343,14 @@ public fun complete_flow_multiple_funded_rounds() {
 
     // Stake 30_000 on first balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 30_000, scenario.ctx());
     assert!(balance_manager.balance() == 470_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 
     // Stake 120_000 on second balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    another_balance_manager.deposit(deposit_balance);
+    another_balance_manager.deposit_int(deposit_balance);
     game.stake(&mut another_balance_manager, 120_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 380_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
@@ -422,14 +422,14 @@ public fun stake_unstake_ok() {
 
     // Stake 30_000 on first balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 30_000, scenario.ctx());
     assert!(balance_manager.balance() == 470_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 
     // Stake 120_000 on second balance manager
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    another_balance_manager.deposit(deposit_balance);
+    another_balance_manager.deposit_int(deposit_balance);
     game.stake(&mut another_balance_manager, 120_000, scenario.ctx());
     assert!(another_balance_manager.balance() == 380_000);
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
@@ -505,7 +505,7 @@ public fun game_doesnt_start_when_everything_unstaked() {
     let mut balance_manager = balance_manager::new(scenario.ctx());
 
     let deposit_balance = mint_for_testing<SUI>(500_000, scenario.ctx()).into_balance();
-    balance_manager.deposit(deposit_balance);
+    balance_manager.deposit_int(deposit_balance);
     game.stake(&mut balance_manager, 100_000, scenario.ctx());
     assert!(game.play_balance(scenario.ctx()) == 0); // Game is yet to start
 

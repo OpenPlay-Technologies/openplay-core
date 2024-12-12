@@ -127,11 +127,11 @@ public(package) fun settle_balance_manager(
                 abort EInsufficientFunds
             }  
         };
-        balance_manager.deposit(balance);
+        balance_manager.deposit_int(balance);
     } else if (amount_in > amount_out) {
         // Balance manager needs to pay the difference to the vault
         let balance;
-        balance = balance_manager.withdraw(amount_in - amount_out);
+        balance = balance_manager.withdraw_int(amount_in - amount_out);
         if (game_play){
             self.play_balance.join(balance);
         }
