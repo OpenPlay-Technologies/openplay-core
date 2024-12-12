@@ -39,6 +39,14 @@ public fun get_state(self: &RouletteContext) : String {
     self.state
 }
 
+public fun get_predictions(self: &RouletteContext) : vector<RoulettePrediction> {
+    self.predictions
+}
+
+public fun get_stakes(self: &RouletteContext) : vector<u64> {
+    self.stakes
+}
+
 // === Public-Mutative Functions ===
 public fun empty(): RouletteContext {
     RouletteContext {
@@ -59,7 +67,7 @@ public(package) fun bet(self: &mut RouletteContext, stakes: vector<u64>, predict
 }
 
 public(package) fun settle(self: &mut RouletteContext, result: RouletteOutcome, wheel_type: String) {
-    assert_valid_result(&result, wheel_type);
+    result.assert_valid_result(wheel_type);
     self.assert_valid_state_transition(state_settled());
     self.result = result;
     self.state = state_settled();

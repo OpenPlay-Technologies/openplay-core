@@ -34,10 +34,10 @@ public fun new(number: u8) : RouletteOutcome {
     }
 }
 
-public(package) fun assert_valid_result(result: &RouletteOutcome, wheel_type: String) {
+public(package) fun assert_valid_result(self: &RouletteOutcome, wheel_type: String) {
     let maxNumber = get_number_slots(wheel_type) - 1; // subtract one because slots start at 0
 
-    assert!((result.number) >= 0 && (result.number) <= maxNumber, EInvalidResult);
+    assert!((self.number) >= 0 && (self.number) <= maxNumber, EInvalidResult);
 }
 
 
