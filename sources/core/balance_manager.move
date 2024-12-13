@@ -8,6 +8,7 @@ module openplay::balance_manager;
 use sui::balance::{Self, Balance};
 use sui::coin::Coin;
 use sui::sui::SUI;
+use sui::event::emit;
 
 // === Errors ===
 const EBalanceTooLow: u64 = 1;
@@ -16,6 +17,13 @@ const EBalanceTooLow: u64 = 1;
 public struct BalanceManager has key, store {
     id: UID,
     balance: Balance<SUI>,
+}
+
+/// Event emitted when a deposit or withdrawal occurs.
+public struct BalanceEvent has copy, drop {
+    balance_manager_id: ID,
+    amount: u64,
+    deposit: bool,
 }
 
 // === Public-Mutative Functions ===
@@ -28,7 +36,7 @@ public fun new(ctx: &mut TxContext): BalanceManager {
 
 /// Deposits the provided balance into the `balance`.
 public fun deposit(self: &mut BalanceManager, to_deposit: Coin<SUI>) {
-    self.balance.join(to_deposit.into_balance());
+    deposit_int(self, to_deposit.into_balance())
 }
 
 public fun withdraw(
@@ -36,8 +44,7 @@ public fun withdraw(
     withdraw_amount: u64,
     ctx: &mut TxContext,
 ): Coin<SUI> {
-    assert!(self.balance.value() >= withdraw_amount, EBalanceTooLow);
-    self.balance.split(withdraw_amount).into_coin(ctx)
+    withdraw_int(self, withdraw_amount).into_coin(ctx)
 }
 
 // === Public-View Functions ===
@@ -55,10 +62,21 @@ public fun balance(self: &BalanceManager): u64 {
 /// Withdraws the provided amount from the `balance`. Fails if there are not sufficient funds.
 public(package) fun withdraw_int(self: &mut BalanceManager, withdraw_amount: u64): Balance<SUI> {
     assert!(self.balance.value() >= withdraw_amount, EBalanceTooLow);
+    emit(BalanceEvent {
+        balance_manager_id: object::id(self),
+        amount: withdraw_amount,
+        deposit: false,
+    });
     self.balance.split(withdraw_amount)
 }
 
 /// Deposits the provided balance into the `balance`.
 public(package) fun deposit_int(self: &mut BalanceManager, to_deposit: Balance<SUI>) {
+    emit(BalanceEvent {
+        balance_manager_id: object::id(self),
+        amount: to_deposit.value(),
+        deposit: true,
+    });
+
     self.balance.join(to_deposit);
 }

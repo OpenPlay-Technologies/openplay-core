@@ -4,3 +4,4 @@
 - AUDIT!! integer overflow, random vulnerabilities (gas cost per flow), and other possible vulnerabilities
 - Make it so that the game can also be activated on a new stake transactions, and not just on epoch change
 - pending stake should only become activated stake if the game managed to start
+- Referral system where anyone can launch a game for a user to get commission on it
