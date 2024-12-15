@@ -144,18 +144,6 @@ public fun even_odd_payout_factor(): u8 {
 }
 
 
-public fun get_color_from_number(number: u8) : String {
-    if (number == 0 || number == 37) {
-        color_green()
-    } else if (number % 2 == 0) {
-        color_black()
-    } else {
-        color_red()
-    }
-}
-
-
-
 
 
 

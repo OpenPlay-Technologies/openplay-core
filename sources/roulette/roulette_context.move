@@ -2,9 +2,11 @@ module openplay::roulette_context;
 
 // === Imports ===
 use std::string::String;
-use openplay::roulette_prediction::{RoulettePrediction, validate_predictions};
+use openplay::coin_flip_const::initialized_status;
+use openplay::coin_flip_context::prediction;
+use openplay::roulette_prediction::{RoulettePrediction, is_valid_predictions};
 use openplay::roulette_outcome;
-use openplay::roulette_outcome::{RouletteOutcome, assert_valid_result};
+use openplay::roulette_outcome::{RouletteOutcome};
 use openplay::roulette_const::{straight_up_bet, split_bet,
     street_bet, corner_bet, column_bet, dozen_bet, five_number_bet, half_bet,
     even_odd_bet, color_bet, line_bet, state_new, state_initialized, state_settled,
@@ -43,10 +45,6 @@ public fun get_predictions(self: &RouletteContext) : vector<RoulettePrediction> 
     self.predictions
 }
 
-public fun get_stakes(self: &RouletteContext) : vector<u64> {
-    self.stakes
-}
-
 // === Public-Mutative Functions ===
 public fun empty(): RouletteContext {
     RouletteContext {
@@ -59,7 +57,8 @@ public fun empty(): RouletteContext {
 
 // === Public-Package Functions ===
 public(package) fun bet(self: &mut RouletteContext, stakes: vector<u64>, predictions: vector<RoulettePrediction>, wheel_type: String) {
-    validate_predictions(predictions, wheel_type);
+    is_valid_predictions(predictions, wheel_type);
+
     self.assert_valid_state_transition(state_initialized());
     self.stakes = stakes;
     self.predictions = predictions;
@@ -123,7 +122,7 @@ fun assert_valid_state_transition(self: &RouletteContext, new_status: String) {
     } else if (current_status == state_initialized()) {
         assert!(new_status == state_settled(), EInvalidStateTransition);
     } else if (current_status == state_settled()) {
-        assert!(false, EInvalidStateTransition);
+        assert!(new_status == initialized_status(), EInvalidStateTransition);
     }
 }
 
@@ -169,6 +168,6 @@ fun get_payout_factor(bet_type: String) : u8 {
 fun is_win(self: &RouletteContext, i : u8): bool {
     // check if the player won
     let prediction = &self.predictions[i as u64];
-    prediction.get_numbers().contains(&self.get_outcome_number())
+    prediction.get_prediction_numbers().contains(&self.get_outcome_number())
 }
 

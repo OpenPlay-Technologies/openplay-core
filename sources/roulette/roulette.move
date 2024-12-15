@@ -1,8 +1,9 @@
 module openplay::roulette;
 
 use std::string::String;
+use openplay::coin_flip_context::prediction;
 use openplay::roulette_outcome;
-use openplay::roulette_prediction::{RoulettePrediction, create_predictions, is_valid_predictions};
+use openplay::roulette_prediction::{RoulettePrediction, create_predictions};
 use openplay::roulette_state;
 use openplay::roulette_const::{get_number_slots};
 use openplay::roulette_context;
@@ -81,6 +82,7 @@ public(package) fun interact(
 }
 
 public(package) fun new_interact(
+    self : &Roulette,
     interact_name: String,
     balance_manager_id: ID,
     stakes: vector<u64>,
@@ -94,7 +96,7 @@ public(package) fun new_interact(
 
     let transaction = vector::empty<Transaction>();
 
-    let predictions = create_predictions(bet_types, included_numbers);
+    let predictions = create_predictions(stakes, bet_types, included_numbers, self.wheel_type);
 
     Interaction {
         balance_manager_id,
@@ -140,10 +142,6 @@ fun validate_interact(self: &Roulette, interaction: &Interaction) {
     match (interaction.interact_type) {
             InteractionType::PLACE_BET { stakes, predictions: predictions } => {
             assert!(is_valid_stakes(stakes, self.max_stake), EUnsupportedStake);
-            assert!(
-                is_valid_predictions(predictions, self.wheel_type),
-                EUnsupportedPrediction,
-            );
         },
     }
 }
