@@ -80,7 +80,7 @@ const ODD : vector<u8> = vector[1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35
 
 
 public enum RoulettePrediction has copy, drop, store {
-    SINGLE_NUMBER {number: u8, stake : u64 }, // 1 possibility
+    STRAIGHT_UP {number: u8, stake : u64 }, // 1 possibility
     SPLIT { numbers : vector<u8>, stake : u64 },
     STREET { index: u8, stake : u64 }, // 12 possibilities
     CORNER { index: u8, stake : u64 }, // 22 possibilities
@@ -101,7 +101,7 @@ public enum RoulettePrediction has copy, drop, store {
 #[allow(unused_variable)]
 public(package) fun get_prediction_numbers(self: &RoulettePrediction) : vector<u8> {
     match (self) {
-            RoulettePrediction::SINGLE_NUMBER { number, stake } => {
+            RoulettePrediction::STRAIGHT_UP { number, stake } => {
             let mut numbers : vector<u8> = vector::empty();
             vector::push_back(&mut numbers, *number);
             numbers
@@ -150,7 +150,7 @@ public(package) fun get_prediction_numbers(self: &RoulettePrediction) : vector<u
 #[allow(unused_variable)]
 public fun get_bet_type(self: &RoulettePrediction) : String {
     match (self) {
-        RoulettePrediction::SINGLE_NUMBER { number, stake } => straight_up_bet(),
+        RoulettePrediction::STRAIGHT_UP { number, stake } => straight_up_bet(),
         RoulettePrediction::SPLIT { numbers, stake } => split_bet(),
         RoulettePrediction::STREET { index, stake } => street_bet(),
         RoulettePrediction::CORNER { index, stake } => corner_bet(),
@@ -163,6 +163,24 @@ public fun get_bet_type(self: &RoulettePrediction) : String {
         RoulettePrediction::EVEN_ODD { is_even, stake } => even_odd_bet(),
     }
 }
+
+#[allow(unused_variable)]
+public fun get_stake(self: &RoulettePrediction) : u64 {
+    match (self) {
+            RoulettePrediction::STRAIGHT_UP { number, stake } => *stake,
+            RoulettePrediction::SPLIT { numbers, stake } => *stake,
+            RoulettePrediction::STREET { index, stake } => *stake,
+            RoulettePrediction::CORNER { index, stake } => *stake,
+            RoulettePrediction::FIVE_NUMBER { stake } => *stake,
+            RoulettePrediction::LINE { index, stake } => *stake,
+            RoulettePrediction::DOZEN { index, stake } => *stake,
+            RoulettePrediction::COLUMN { index, stake } => *stake,
+            RoulettePrediction::HALF { index, stake } => *stake,
+            RoulettePrediction::COLOR { color, stake } => *stake,
+            RoulettePrediction::EVEN_ODD { is_even, stake } => *stake,
+    }
+}
+
 
 
 /// === Public-Package Functions ===
@@ -189,40 +207,37 @@ public(package) fun create_predictions(stakes : vector<u64>, bet_types : vector<
 public(package) fun create_prediction(stake : u64, bet_type : String, prediction_value : vector<u8>, wheel_type : String) : RoulettePrediction {
     assert!(is_valid_prediction_value(bet_type, prediction_value, wheel_type), EInvalidPrediction);
     if (bet_type == straight_up_bet()) {
-        RoulettePrediction::SINGLE_NUMBER { number: prediction_value[0], stake }
+        return RoulettePrediction::STRAIGHT_UP { number: prediction_value[0], stake }
     }
     else if (bet_type == split_bet()) {
-        RoulettePrediction::SPLIT { numbers: prediction_value, stake }
+        return RoulettePrediction::SPLIT { numbers: prediction_value, stake }
     }
     else if (bet_type == street_bet()) {
-        RoulettePrediction::STREET { index: prediction_value[0], stake }
+        return RoulettePrediction::STREET { index: prediction_value[0], stake }
     }
     else if (bet_type == corner_bet()) {
-        RoulettePrediction::CORNER { index: prediction_value[0], stake }
+        return RoulettePrediction::CORNER { index: prediction_value[0], stake }
     }
     else if (bet_type == five_number_bet()) {
-        RoulettePrediction::FIVE_NUMBER { stake }
+        return RoulettePrediction::FIVE_NUMBER { stake }
     }
     else if (bet_type == line_bet()) {
-        RoulettePrediction::LINE { index: prediction_value[0], stake }
+        return RoulettePrediction::LINE { index: prediction_value[0], stake }
     }
     else if (bet_type == dozen_bet()) {
-        RoulettePrediction::DOZEN { index: prediction_value[0], stake }
+        return RoulettePrediction::DOZEN { index: prediction_value[0], stake }
     }
     else if (bet_type == column_bet()) {
-        RoulettePrediction::COLUMN { index: prediction_value[0], stake }
+        return RoulettePrediction::COLUMN { index: prediction_value[0], stake }
     }
     else if (bet_type == half_bet()) {
-        RoulettePrediction::HALF { index: prediction_value[0], stake }
+        return RoulettePrediction::HALF { index: prediction_value[0], stake }
     }
     else if (bet_type == color_bet()) {
-        RoulettePrediction::COLOR { color: get_color(prediction_value[0]), stake }
+        return RoulettePrediction::COLOR { color: get_color(prediction_value[0]), stake }
     }
     else if (bet_type == even_odd_bet()) {
-        RoulettePrediction::EVEN_ODD { is_even: prediction_value[0] == 0, stake }
-    }
-    else {
-        abort(EInvalidPrediction)
+        return RoulettePrediction::EVEN_ODD { is_even: prediction_value[0] == 0, stake }
     };
     abort(EInvalidPrediction)
 }
@@ -236,7 +251,7 @@ public(package) fun get_color(num : u8) : String {
     }
 }
 
-fun is_valid_prediction_value(bet_type: String, values : vector<u8>, wheel_type : String) : bool {
+public(package) fun is_valid_prediction_value(bet_type: String, values : vector<u8>, wheel_type : String) : bool {
     if (bet_type == straight_up_bet()) {
         let max = get_number_slots(wheel_type) - 1;
         (values.length() == 1) && (values[0] >= 0) && (values[0] <= max)
@@ -300,7 +315,7 @@ public(package) fun is_valid_predictions(predictions : vector<RoulettePrediction
 #[allow(unused_variable)]
 public(package) fun is_valid_prediction_bet(self: &RoulettePrediction, wheel_type: String) : bool { // i prob need to add extra validation that the numbers themselves are valid combinations...
     match (self) {
-        RoulettePrediction::SINGLE_NUMBER { number, stake } => {
+        RoulettePrediction::STRAIGHT_UP { number, stake } => {
             let maxNumber = get_number_slots(wheel_type) - 1; // subtract one because slots start at 0
             (*number >= 0) && (*number <= maxNumber)
         },

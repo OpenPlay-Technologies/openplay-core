@@ -119,7 +119,7 @@ fun interact_int(
             let sum_stakes = sum_stakes(&stakes);
 
             transactions.push_back(bet(sum_stakes));
-            context.bet(stakes, prediction, wheel_type);
+            context.bet(prediction, wheel_type);
 
             // Generate result
             let max_number = get_number_slots(wheel_type) - 1; // subtract one because slots start at 0
@@ -139,10 +139,24 @@ fun interact_int(
 #[allow(unused_variable)]
 fun validate_interact(self: &Roulette, interaction: &Interaction) {
     match (interaction.interact_type) {
-            InteractionType::PLACE_BET { stakes, predictions: predictions } => {
-            assert!(is_valid_stakes(stakes, self.max_stake), EUnsupportedStake);
+            InteractionType::PLACE_BET { stakes, predictions } => {
+            assert!(is_valid_stakes(get_stakes(&predictions), self.max_stake), EUnsupportedStake);
         },
     }
+}
+
+fun get_stakes(predictions: &vector<RoulettePrediction>) : vector<u64> {
+    let mut stakes = vector::empty<u64>();
+    let mut i = 0;
+    let len = predictions.length();
+    loop {
+        if (i == len) {
+            break
+        };
+        stakes.push_back(predictions[i].get_stake());
+        i = i + 1;
+    };
+    stakes
 }
 
 

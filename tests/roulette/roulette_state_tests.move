@@ -2,7 +2,7 @@
 module openplay::roulette_state_tests;
 
 use openplay::roulette_const::{straight_up_bet, wheel_type_american};
-use openplay::roulette_prediction::{RoulettePrediction, new};
+use openplay::roulette_prediction::{RoulettePrediction, create_prediction};
 use openplay::roulette_outcome::{new as roulette_outcome_new};
 use openplay::roulette_context::{empty};
 use openplay::roulette_state;
@@ -25,50 +25,44 @@ public fun process_context_ok() {
 
     // context 1
     let mut context = empty();
-    let mut stakes: vector<u64> = vector::empty();
-    vector::push_back(&mut stakes, 10);
 
     let mut predictions : vector<RoulettePrediction> = vector::empty();
     let mut pred_number : vector<u8> = vector::empty();
     vector::push_back(&mut pred_number, 1);
 
-    let pred = new(straight_up_bet(), pred_number);
+    let pred = create_prediction(10, straight_up_bet(), pred_number, wheel_type_american());
     vector::push_back(&mut predictions, pred);
 
     let outcome = roulette_outcome_new(1);
-    context.bet(stakes, predictions, wheel_type_american());
+    context.bet(predictions, wheel_type_american());
     context.settle(outcome, wheel_type_american());
 
     // context 2
     let mut context2 = empty();
-    let mut stakes2: vector<u64> = vector::empty();
-    vector::push_back(&mut stakes2, 10);
 
     let mut predictions2 : vector<RoulettePrediction> = vector::empty();
     let mut pred_number2 : vector<u8> = vector::empty();
     vector::push_back(&mut pred_number2, 1);
 
-    let pred2 = new(straight_up_bet(), pred_number2);
+    let pred2 = create_prediction(10, straight_up_bet(), pred_number2, wheel_type_american());
     vector::push_back(&mut predictions2, pred2);
 
     let outcome2 = roulette_outcome_new(37);
-    context2.bet(stakes2, predictions2, wheel_type_american());
+    context2.bet(predictions2, wheel_type_american());
     context2.settle(outcome2, wheel_type_american());
 
     // context 3
     let mut context3 = empty();
-    let mut stakes3: vector<u64> = vector::empty();
-    vector::push_back(&mut stakes3, 10);
 
     let mut predictions3 : vector<RoulettePrediction> = vector::empty();
     let mut pred_number3 : vector<u8> = vector::empty();
     vector::push_back(&mut pred_number3, 1);
 
-    let pred3 = new(straight_up_bet(), pred_number3);
+    let pred3 = create_prediction(10, straight_up_bet(), pred_number3, wheel_type_american());
     vector::push_back(&mut predictions3, pred3);
 
     let outcome3 = roulette_outcome_new(37);
-    context3.bet(stakes3, predictions3, wheel_type_american());
+    context3.bet(predictions3, wheel_type_american());
     context3.settle(outcome3, wheel_type_american());
 
     state.process_context(&context);

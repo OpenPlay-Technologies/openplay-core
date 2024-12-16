@@ -22,7 +22,6 @@ const EInvalidStateTransition: u64 = 2;
 
 // === Structs ===
 public struct RouletteContext has store {
-    stakes: vector<u64>,
     predictions: vector<RoulettePrediction>,
     result: RouletteOutcome,
     state: String,
@@ -48,7 +47,6 @@ public fun get_predictions(self: &RouletteContext) : vector<RoulettePrediction> 
 // === Public-Mutative Functions ===
 public fun empty(): RouletteContext {
     RouletteContext {
-        stakes: vector::empty<u64>(),
         predictions: vector::empty<RoulettePrediction>(),
         result: roulette_outcome::empty(),
         state: state_new(),
@@ -56,11 +54,10 @@ public fun empty(): RouletteContext {
 }
 
 // === Public-Package Functions ===
-public(package) fun bet(self: &mut RouletteContext, stakes: vector<u64>, predictions: vector<RoulettePrediction>, wheel_type: String) {
+public(package) fun bet(self: &mut RouletteContext, predictions: vector<RoulettePrediction>, wheel_type: String) {
     is_valid_predictions(predictions, wheel_type);
 
     self.assert_valid_state_transition(state_initialized());
-    self.stakes = stakes;
     self.predictions = predictions;
     self.state = state_initialized();
 }
@@ -84,7 +81,7 @@ public(package) fun get_payout(self: &RouletteContext) : u64 {
         let prediction = &self.predictions[i as u64];
 
         if (self.is_win(i)) {
-            total_payout = total_payout + self.stakes[i as u64] * (get_payout_factor(prediction.get_bet_type()) as u64)
+            total_payout = total_payout + prediction.get_stake() * (get_payout_factor(prediction.get_bet_type()) as u64)
         };
 
         i = (i + 1);
