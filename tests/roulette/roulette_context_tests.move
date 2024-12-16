@@ -80,7 +80,7 @@ public fun invalid_transition_settle_first() {
 }
 
 #[test]
-public fun invalid_transition_bet_after_settle() {
+public fun valid_transition_bet_after_settle() {
     let mut context = empty();
 
     let mut predictions : vector<RoulettePrediction> = vector::empty();
