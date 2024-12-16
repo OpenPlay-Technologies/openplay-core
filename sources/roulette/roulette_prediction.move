@@ -98,6 +98,7 @@ public enum RoulettePrediction has copy, drop, store {
 
 
 // === Public-View Functions ===
+#[allow(unused_variable)]
 public(package) fun get_prediction_numbers(self: &RoulettePrediction) : vector<u8> {
     match (self) {
             RoulettePrediction::SINGLE_NUMBER { number, stake } => {
@@ -146,6 +147,7 @@ public(package) fun get_prediction_numbers(self: &RoulettePrediction) : vector<u
     }
 }
 
+#[allow(unused_variable)]
 public fun get_bet_type(self: &RoulettePrediction) : String {
     match (self) {
         RoulettePrediction::SINGLE_NUMBER { number, stake } => straight_up_bet(),
@@ -187,37 +189,37 @@ public(package) fun create_predictions(stakes : vector<u64>, bet_types : vector<
 public(package) fun create_prediction(stake : u64, bet_type : String, prediction_value : vector<u8>, wheel_type : String) : RoulettePrediction {
     assert!(is_valid_prediction_value(bet_type, prediction_value, wheel_type), EInvalidPrediction);
     if (bet_type == straight_up_bet()) {
-        RoulettePrediction::SINGLE_NUMBER { number: prediction_value[0], stake: stake }
+        RoulettePrediction::SINGLE_NUMBER { number: prediction_value[0], stake }
     }
     else if (bet_type == split_bet()) {
-        RoulettePrediction::SPLIT { numbers: prediction_value, stake: stake }
+        RoulettePrediction::SPLIT { numbers: prediction_value, stake }
     }
     else if (bet_type == street_bet()) {
-        RoulettePrediction::STREET { index: prediction_value[0], stake: stake }
+        RoulettePrediction::STREET { index: prediction_value[0], stake }
     }
     else if (bet_type == corner_bet()) {
-        RoulettePrediction::CORNER { index: prediction_value[0], stake: stake }
+        RoulettePrediction::CORNER { index: prediction_value[0], stake }
     }
     else if (bet_type == five_number_bet()) {
-        RoulettePrediction::FIVE_NUMBER { stake: stake }
+        RoulettePrediction::FIVE_NUMBER { stake }
     }
     else if (bet_type == line_bet()) {
-        RoulettePrediction::LINE { index: prediction_value[0], stake: stake }
+        RoulettePrediction::LINE { index: prediction_value[0], stake }
     }
     else if (bet_type == dozen_bet()) {
-        RoulettePrediction::DOZEN { index: prediction_value[0], stake: stake }
+        RoulettePrediction::DOZEN { index: prediction_value[0], stake }
     }
     else if (bet_type == column_bet()) {
-        RoulettePrediction::COLUMN { index: prediction_value[0], stake: stake }
+        RoulettePrediction::COLUMN { index: prediction_value[0], stake }
     }
     else if (bet_type == half_bet()) {
-        RoulettePrediction::HALF { index: prediction_value[0], stake: stake }
+        RoulettePrediction::HALF { index: prediction_value[0], stake }
     }
     else if (bet_type == color_bet()) {
-        RoulettePrediction::COLOR { color: get_color(prediction_value[0]), stake: stake }
+        RoulettePrediction::COLOR { color: get_color(prediction_value[0]), stake }
     }
     else if (bet_type == even_odd_bet()) {
-        RoulettePrediction::EVEN_ODD { is_even: prediction_value[0] == 0, stake: stake }
+        RoulettePrediction::EVEN_ODD { is_even: prediction_value[0] == 0, stake }
     }
     else {
         abort(EInvalidPrediction)
@@ -295,6 +297,7 @@ public(package) fun is_valid_predictions(predictions : vector<RoulettePrediction
 
 
 /// === Private Functions ===
+#[allow(unused_variable)]
 public(package) fun is_valid_prediction_bet(self: &RoulettePrediction, wheel_type: String) : bool { // i prob need to add extra validation that the numbers themselves are valid combinations...
     match (self) {
         RoulettePrediction::SINGLE_NUMBER { number, stake } => {

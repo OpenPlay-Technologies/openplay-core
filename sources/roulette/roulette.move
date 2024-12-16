@@ -16,8 +16,7 @@ use openplay::roulette_state::RouletteState;
 
 // === Errors ===
 const EUnsupportedStake: u64 = 1;
-const EUnsupportedPrediction: u64 = 2;
-const EUnsupportedAction: u64 = 3;
+const EUnsupportedAction: u64 = 2;
 
 
 // === Structs ===
@@ -137,7 +136,7 @@ fun interact_int(
 }
 
 
-
+#[allow(unused_variable)]
 fun validate_interact(self: &Roulette, interaction: &Interaction) {
     match (interaction.interact_type) {
             InteractionType::PLACE_BET { stakes, predictions: predictions } => {
