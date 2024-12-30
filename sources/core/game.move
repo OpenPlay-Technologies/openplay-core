@@ -9,9 +9,10 @@ use openplay::state::{Self, State};
 use openplay::transaction::Transaction;
 use openplay::vault::{Self, Vault};
 use std::option::{none, some};
-use std::string::String;
+use std::string::{String, utf8};
 use sui::random::Random;
 use sui::transfer::share_object;
+use openplay::constants::{type_coin_flip};
 
 // === Errors ===
 const EInvalidGameType: u64 = 1;
@@ -19,11 +20,6 @@ const EInvalidStake: u64 = 2;
 const EInsufficientFunds: u64 = 3;
 
 // === Structs ===
-public enum GameType has store, copy, drop {
-    SlotMachine,
-    CoinFlip,
-}
-
 public enum Interaction {
     // SlotMachineInteraction(slot_machine::Interaction),
     CoinFlipInteraction(coin_flip::Interaction),
@@ -31,7 +27,12 @@ public enum Interaction {
 
 public struct Game has key {
     id: UID,
-    game_type: GameType,
+    // Display properties
+    name: String,
+    project_url: String,
+    image_url: String,
+
+    game_type: String,
     // slot_machine: Option<SlotMachine>,
     coin_flip: Option<CoinFlip>,
     vault: Vault,
@@ -53,6 +54,9 @@ public fun play_balance(self: &mut Game, ctx: &mut TxContext): u64 {
 
 public fun new_coin_flip(
     registry: &mut Registry,
+    name: String,
+    project_url: String,
+    image_url: String,
     target_balance: u64,
     max_stake: u64,
     house_edge_bps: u64,
@@ -62,7 +66,10 @@ public fun new_coin_flip(
     let coin_flip = coin_flip::new(max_stake, house_edge_bps, payout_factor_bps, ctx);
     let game = Game {
         id: object::new(ctx),
-        game_type: GameType::CoinFlip,
+        name,
+        project_url,
+        image_url,
+        game_type: type_coin_flip(),
         coin_flip: some(coin_flip),
         vault: vault::empty(ctx),
         state: state::new(ctx),
@@ -85,7 +92,7 @@ entry fun interact_coin_flip(
     ctx: &mut TxContext,
 ): coin_flip::Interaction {
     // Verify that it is indeed a coin flip game
-    assert!(self.game_type == GameType::CoinFlip, EInvalidGameType);
+    assert!(self.game_type == type_coin_flip(), EInvalidGameType);
     // Make sure the vault is up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
     // Make sure we have enough funds in the vault to play this game
@@ -201,7 +208,10 @@ fun ensure_sufficient_funds(self: &Game, max_payout: u64) {
 public fun empty_game_for_testing(target_balance: u64, ctx: &mut TxContext): Game {
     Game {
         id: object::new(ctx),
-        game_type: GameType::CoinFlip,
+        name: utf8(b""),
+        image_url: utf8(b""),
+        project_url: utf8(b""),
+        game_type: utf8(b""),
         vault: vault::empty(ctx),
         state: state::new(ctx),
         target_balance,

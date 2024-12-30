@@ -31,6 +31,11 @@ public struct History has store {
     previous_end_of_day: EndOfDay,
     historic_volumes: Table<u64, Volumes>,
     end_of_day_balances: Table<u64, EndOfDay>,
+    // TODO:
+    all_time_bet_amount: u128,
+    all_time_win_amount: u128,
+    all_time_profits: u128,
+    all_time_losses: u128
 }
 
 // === Public-View Functions ===
@@ -90,6 +95,10 @@ public(package) fun empty(ctx: &mut TxContext): History {
         current_volumes: volumes,
         historic_volumes: table::new(ctx),
         end_of_day_balances: table::new(ctx),
+        all_time_bet_amount: 0, 
+        all_time_win_amount: 0,
+        all_time_profits: 0,
+        all_time_losses: 0,
     };
 
     history

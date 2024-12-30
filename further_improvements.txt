@@ -5,3 +5,5 @@
 - Make it so that the game can also be activated on a new stake transactions, and not just on epoch change
 - pending stake should only become activated stake if the game managed to start
 - Referral system where anyone can launch a game for a user to get commission on it
+- make unstaking / staking directly work with the main wallet, without the need for a balance manager
+- add metadata like an NFT to the games

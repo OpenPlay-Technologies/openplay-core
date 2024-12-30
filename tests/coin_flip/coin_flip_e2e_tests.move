@@ -18,6 +18,7 @@ use sui::random::Random;
 use sui::sui::SUI;
 use sui::test_scenario::{begin, return_shared};
 use sui::test_utils::destroy;
+use std::string::utf8;
 
 #[test]
 public fun success_flow_win() {
@@ -32,6 +33,9 @@ public fun success_flow_win() {
     let rand = scenario.take_shared<Random>();
     let mut coin_flip_game = game::new_coin_flip(
         &mut registry,
+        utf8(b""),
+        utf8(b""),
+        utf8(b""),
         100_000,
         10_000,
         0,
@@ -94,6 +98,9 @@ public fun success_flow_lose() {
     let rand = scenario.take_shared<Random>();
     let mut coin_flip_game = game::new_coin_flip(
         &mut registry,
+                utf8(b""),
+        utf8(b""),
+        utf8(b""),
         100_000,
         10_000,
         0,
