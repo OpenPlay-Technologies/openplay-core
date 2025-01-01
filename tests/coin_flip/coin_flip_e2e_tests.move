@@ -31,7 +31,7 @@ public fun success_flow_win() {
     let mut scenario = begin(addr);
     let mut registry = registry_for_testing(scenario.ctx());
     let rand = scenario.take_shared<Random>();
-    let mut coin_flip_game = game::new_coin_flip(
+    let (mut coin_flip_game,  cap) = game::new_coin_flip(
         &mut registry,
         utf8(b""),
         utf8(b""),
@@ -44,7 +44,7 @@ public fun success_flow_win() {
     );
 
     // Fund the game
-    let mut stake_balance_manager = fund_game_for_playing(
+    let mut participation = fund_game_for_playing(
         &mut coin_flip_game,
         200_000,
         scenario.ctx(),
@@ -71,16 +71,18 @@ public fun success_flow_win() {
 
     // Check the stake balance manager
     scenario.next_epoch(addr);
+    coin_flip_game.update_participation(&mut participation, scenario.ctx());
     let expected_fee = int_mul(1_000, protocol_fee()) + int_mul(1_000, owner_fee());
     assert_eq_within_precision_allowance(
-        coin_flip_game.active_stake(&mut stake_balance_manager, scenario.ctx()),
+        participation.active_stake(),
         199_000 - expected_fee,
     );
 
     destroy(coin_flip_game);
     destroy(balance_manager);
-    destroy(stake_balance_manager);
+    destroy(participation);
     destroy(registry);
+    destroy(cap);
     return_shared(rand);
     scenario.end();
 }
@@ -96,7 +98,7 @@ public fun success_flow_lose() {
     let mut scenario = begin(addr);
     let mut registry = registry_for_testing(scenario.ctx());
     let rand = scenario.take_shared<Random>();
-    let mut coin_flip_game = game::new_coin_flip(
+    let (mut coin_flip_game,  cap) = game::new_coin_flip(
         &mut registry,
                 utf8(b""),
         utf8(b""),
@@ -109,7 +111,7 @@ public fun success_flow_lose() {
     );
 
     // Fund the game
-    let mut stake_balance_manager = fund_game_for_playing(
+    let mut participation = fund_game_for_playing(
         &mut coin_flip_game,
         200_000,
         scenario.ctx(),
@@ -136,15 +138,17 @@ public fun success_flow_lose() {
 
     // Check the stake balance manager
     scenario.next_epoch(addr);
+    coin_flip_game.update_participation(&mut participation, scenario.ctx());
     let expected_fee = int_mul(1_000, protocol_fee()) + int_mul(1_000, owner_fee());
     assert_eq_within_precision_allowance(
-        coin_flip_game.active_stake(&mut stake_balance_manager, scenario.ctx()),
+        participation.active_stake(),
         201_000 - expected_fee,
     );
 
     destroy(coin_flip_game);
     destroy(balance_manager);
-    destroy(stake_balance_manager);
+    destroy(participation);
+    destroy(cap);
     destroy(registry);
     return_shared(rand);
     scenario.end();

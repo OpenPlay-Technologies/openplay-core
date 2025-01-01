@@ -4,20 +4,30 @@ module openplay::game;
 
 use openplay::balance_manager::BalanceManager;
 use openplay::coin_flip::{Self, CoinFlip};
+use openplay::constants::type_coin_flip;
+use openplay::participation::{Self, Participation};
 use openplay::registry::Registry;
 use openplay::state::{Self, State};
-use openplay::transaction::Transaction;
 use openplay::vault::{Self, Vault};
-use std::option::{none, some};
-use std::string::{String, utf8};
+use std::option::some;
+use std::string::String;
+use sui::coin::Coin;
 use sui::random::Random;
+use sui::sui::SUI;
 use sui::transfer::share_object;
-use openplay::constants::{type_coin_flip};
+
+#[test_only]
+use openplay::transaction::Transaction;
+#[test_only]
+use std::string::utf8;
+#[test_only]
+use std::option::none;
 
 // === Errors ===
 const EInvalidGameType: u64 = 1;
-const EInvalidStake: u64 = 2;
-const EInsufficientFunds: u64 = 3;
+const EInsufficientFunds: u64 = 2;
+const EInvalidCap: u64 = 3;
+const EInvalidParticipation: u64 = 4;
 
 // === Structs ===
 public enum Interaction {
@@ -31,7 +41,6 @@ public struct Game has key {
     name: String,
     project_url: String,
     image_url: String,
-
     game_type: String,
     // slot_machine: Option<SlotMachine>,
     coin_flip: Option<CoinFlip>,
@@ -40,7 +49,15 @@ public struct Game has key {
     target_balance: u64,
 }
 
+public struct GameCap has key, store {
+    id: UID,
+    game_id: ID
+}
+
 // == Public-View Functions==
+public fun id(self: &Game): ID {
+    self.id.to_inner()
+}
 
 // === Public-Mutative Functions ===
 public fun share(self: Game) {
@@ -62,7 +79,7 @@ public fun new_coin_flip(
     house_edge_bps: u64,
     payout_factor_bps: u64,
     ctx: &mut TxContext,
-): Game {
+): (Game, GameCap) {
     let coin_flip = coin_flip::new(max_stake, house_edge_bps, payout_factor_bps, ctx);
     let game = Game {
         id: object::new(ctx),
@@ -76,7 +93,13 @@ public fun new_coin_flip(
         target_balance,
     };
     registry.register_game(game.id.to_inner());
-    game
+
+    let cap = GameCap {
+        id: object::new(ctx),
+        game_id: game.id()
+    };
+
+    (game, cap)
 }
 
 /// Interact entry function that can be used when the game is of type CoinFlip.
@@ -108,62 +131,89 @@ entry fun interact_coin_flip(
     // Process transactions by state
     let (credit_balance, debit_balance, owner_fee, protocol_fee) = self
         .state
-        .process_transactions(&interact.transactions(), balance_manager.id(), ctx);
+        .process_transactions(&interact.transactions(), balance_manager.id());
 
     // Settle the balances in vault
-    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, true);
+    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager);
     self.vault.process_fees(owner_fee, protocol_fee);
 
     interact
+}
+
+/// Create a new participation
+public fun new_participation(self: &Game, ctx: &mut TxContext): Participation {
+    participation::empty(self.id.to_inner(), ctx)
 }
 
 /// Stake money in the protocol to participate in the house winnings.
 /// The stake is first added to the account's inactive stake, and is only activated in the next epoch.
 public fun stake(
     self: &mut Game,
-    balance_manager: &mut BalanceManager,
-    amount: u64,
+    participation: &mut Participation,
+    stake: Coin<SUI>,
     ctx: &mut TxContext,
 ) {
-    // Make sure the end of day is processed
-    self.process_end_of_day(ctx);
-    assert!(amount > 0, EInvalidStake);
-    let (credit_balance, debit_balance) = self
-        .state
-        .process_stake(balance_manager.id(), amount, ctx);
+    self.assert_valid_participation(participation);
 
-    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
+    // Make sure the vault and participation are up to date (end of day is processed for previous days)
+    self.process_end_of_day(ctx);
+
+    // Process the stake in the history
+    self.state.process_stake(stake.value());
+
+    // Add funds to the participation
+    participation.add_inactive_stake(stake.value(), ctx);
+
+    // Move funds to the vault
+    self.vault.deposit(stake.into_balance());
 }
 
-public fun settle(self: &mut Game, balance_manager: &mut BalanceManager, ctx: &mut TxContext) {
+/// Refreshes the participation to process any unprocessed profits or losses.
+public fun update_participation(self: &mut Game, participation: &mut Participation, ctx: &mut TxContext) {
+    self.assert_valid_participation(participation);
+
+    // Make sure the end of day is processed
     self.process_end_of_day(ctx);
-    let (credit_balance, debit_balance) = self.state.settle_account(balance_manager.id(), ctx);
-    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
+
+    // Refresh the participation
+    self.state.refresh(participation, ctx);
 }
 
 /// Withdraws the stake from the current game. This only goes into effect in the next epoch.
-public fun unstake(self: &mut Game, balance_manager: &mut BalanceManager, ctx: &mut TxContext) {
-    // Make sure the vault is up to date (end of day is processed for previous days)
+public fun unstake(self: &mut Game, participation: &mut Participation, ctx: &mut TxContext) {
+    self.assert_valid_participation(participation);
+
+    // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
 
-    let (credit_balance, debit_balance) = self.state.process_unstake(balance_manager.id(), ctx);
-    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
+    // Unstake the funds in the participation
+    let (unstake_immediately, pending_unstake) = participation.unstake(ctx);
+
+    // Process the unstake in the history
+    self.state.process_unstake(unstake_immediately, pending_unstake);
 }
 
-/// Gets the active stake and also settles the open balances with the balance_manager
-public fun active_stake(
+public fun claim_all(
     self: &mut Game,
-    balance_manager: &mut BalanceManager,
-    ctx: &TxContext,
-): u64 {
-    // Make sure the vault is up to date (end of day is processed for previous days)
+    participation: &mut Participation,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    self.assert_valid_participation(participation);
+
+    // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
 
-    let (credit_balance, debit_balance, active_stake) = self
-        .state
-        .active_stake(balance_manager.id(), ctx);
-    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, false);
-    active_stake
+    // Take the claimable balance from participation
+    let claimable = participation.claim_all(ctx);
+
+    // Withdraw from vault
+    self.vault.withdraw(claimable).into_coin(ctx)
+}
+
+/// Claims all the fees for this game. Can only be called by the game owner (using the game_cap)
+public fun claim_all_fees(self: &mut Game, game_cap: &GameCap, ctx: &mut TxContext): Coin<SUI> {
+    assert_valid_cap(self, game_cap);
+    self.vault.withdraw_all_owner_fees().into_coin(ctx)
 }
 
 // == Private Functions ==
@@ -203,6 +253,14 @@ fun ensure_sufficient_funds(self: &Game, max_payout: u64) {
     assert!(self.vault.play_balance() >= max_payout, EInsufficientFunds)
 }
 
+fun assert_valid_cap(self: &Game, game_cap: &GameCap){
+    assert!(self.id() == game_cap.game_id, EInvalidCap);
+}
+
+fun assert_valid_participation(self: &Game, participation: &Participation){
+    assert!(self.id() == participation.game_id(), EInvalidParticipation);
+}
+
 // === Test Functions ===
 #[test_only]
 public fun empty_game_for_testing(target_balance: u64, ctx: &mut TxContext): Game {
@@ -220,24 +278,34 @@ public fun empty_game_for_testing(target_balance: u64, ctx: &mut TxContext): Gam
 }
 
 #[test_only]
+public fun cap_for_testing(game: &Game, ctx: &mut TxContext): GameCap {
+    GameCap{
+        id: object::new(ctx),
+        game_id: game.id()
+    }
+}
+
+#[test_only]
 public fun process_transactions_for_testing(
     self: &mut Game,
-    max_payout: u64,
     txs: &vector<Transaction>,
     balance_manager: &mut BalanceManager,
     ctx: &TxContext,
 ) {
     // Make sure the vault is up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
-    // Make sure we have enough funds in the vault to play this game
-    self.ensure_sufficient_funds(max_payout);
 
     // Process transactions by state
     let (credit_balance, debit_balance, owner_fee, protocol_fee) = self
         .state
-        .process_transactions(txs, balance_manager.id(), ctx);
+        .process_transactions(txs, balance_manager.id());
 
     // Settle the balances in vault
-    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, true);
+    self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager);
     self.vault.process_fees(owner_fee, protocol_fee);
+}
+
+#[test_only]
+public fun add_owner_fees_for_testing(self: &mut Game, amount: u64, ctx: &mut TxContext) {
+    self.vault.fund_owner_fees_for_testing(amount, ctx);
 }

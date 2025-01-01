@@ -4,6 +4,7 @@ module openplay::test_utils;
 use openplay::constants::precision_error_allowance;
 use openplay::game::Game;
 use openplay::balance_manager::{Self, BalanceManager};
+use openplay::participation::{Self, Participation};
 use sui::coin::{mint_for_testing};
 use sui::sui::SUI;
 use sui::random::{Random, create_for_testing};
@@ -40,10 +41,9 @@ public fun create_and_fix_random(bytes: vector<u8>) {
     scenario.end();
 }
 
-public fun fund_game_for_playing(game: &mut Game, amount: u64, ctx: &mut TxContext): BalanceManager {
-    let mut stake_balance_manager = balance_manager::new(ctx);
-    let deposit_balance = mint_for_testing<SUI>(amount, ctx).into_balance();
-    stake_balance_manager.deposit_int(deposit_balance);
-    game.stake(&mut stake_balance_manager, amount, ctx);
-    stake_balance_manager
+public fun fund_game_for_playing(game: &mut Game, amount: u64, ctx: &mut TxContext): Participation {
+    let mut participation = participation::empty(game.id(), ctx);
+    let stake = mint_for_testing<SUI>(amount, ctx);
+    game.stake(&mut participation, stake, ctx);
+    participation
 }

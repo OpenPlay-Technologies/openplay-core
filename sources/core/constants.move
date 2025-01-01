@@ -5,7 +5,7 @@ use std::string::{String, utf8};
 
 // === Constant ===
 const OWNER_FEE_BPS: u64 = 50; // in bps , taken on bets
-const PROTOCOL_FEE_BPS: u64 = 50; // in bps , taken on bets
+const PROTOCOL_FEE_BPS: u64 = 0; // in bps , taken on bets
 const PRECISION_ERROR_ALLOWANCE: u64 = 2;
 
 // === Public-View Functions ===

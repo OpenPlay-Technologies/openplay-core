@@ -89,22 +89,31 @@ public(package) fun activate(self: &mut Vault, target_balance: u64) {
     self.active = true;
 }
 
+public(package) fun deposit(self: &mut Vault, stake: Balance<SUI>) {
+    self.reserve_balance.join(stake);
+}
+
+public(package) fun withdraw(self: &mut Vault, amount: u64): Balance<SUI> {
+    self.reserve_balance.split(amount)
+}
+
+public(package) fun withdraw_all_owner_fees(self: &mut Vault): Balance<SUI> {
+    self.collected_owner_fees.withdraw_all()
+}
+
 /// Settles the balances between the `vault` and `balance_manager`.
 /// For `amount_in`, balances are withdrawn from the `balance_manager` and joined with the `play_balance` or `reserve_balance`.
 /// For `amount_out`, balances are split from the `play_balance` and deposited into `balance_manager` or `reserve_balance`.
-/// Gameplay transactions are settled from the `play_balance`, while other transactions are settled from the `reserve_balance`.
 public(package) fun settle_balance_manager(
     self: &mut Vault,
     amount_out: u64,
     amount_in: u64,
-    balance_manager: &mut BalanceManager,
-    game_play: bool
+    balance_manager: &mut BalanceManager
 ) {
     if (amount_out > amount_in) {
         // Vault needs to pay the difference to the balance_manager
         let balance;
-        if (game_play){
-            if (self.play_balance.value() >= amount_out - amount_in){
+        if (self.play_balance.value() >= amount_out - amount_in){
                 balance = self.play_balance.split(amount_out - amount_in);
             }
             else if (amount_out - amount_in - self.play_balance.value() <= precision_error_allowance()) {
@@ -113,31 +122,13 @@ public(package) fun settle_balance_manager(
             }
             else {
                 abort EInsufficientFunds
-            }
-        }
-        else {
-            if (self.reserve_balance.value() >= amount_out - amount_in){
-                balance = self.reserve_balance.split(amount_out - amount_in);
-            }
-            else if (amount_out - amount_in - self.reserve_balance.value() <= precision_error_allowance()) {
-                // This can only happen with small precision errors
-                balance = self.reserve_balance.withdraw_all();
-            }
-            else {
-                abort EInsufficientFunds
-            }  
         };
         balance_manager.deposit_int(balance);
     } else if (amount_in > amount_out) {
         // Balance manager needs to pay the difference to the vault
         let balance;
         balance = balance_manager.withdraw_int(amount_in - amount_out);
-        if (game_play){
-            self.play_balance.join(balance);
-        }
-        else {
-            self.reserve_balance.join(balance);
-        }
+        self.play_balance.join(balance);
     };
 }
 
@@ -177,4 +168,10 @@ public fun fund_reserve_balance_for_testing(self: &mut Vault, amount: u64, ctx: 
 public fun burn_reserve_balance_for_testing(self: &mut Vault, amount: u64, ctx: &mut TxContext){
     let balance = self.reserve_balance.split(amount);
     balance.into_coin(ctx).burn_for_testing();
+}
+
+#[test_only]
+public fun fund_owner_fees_for_testing(self: &mut Vault, amount: u64, ctx: &mut TxContext){
+    let balance = sui::coin::mint_for_testing(amount, ctx).into_balance();
+    self.collected_owner_fees.join(balance);
 }
