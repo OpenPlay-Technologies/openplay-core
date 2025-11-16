@@ -1,0 +1,4 @@
+sui client pay-sui \
+  --recipients 0x94631eafc583916ac5f01bafa8929bf3570810d3eb806dd117c3ce4bc16b150a \
+  --input-coins 0x37469b32f0773476f20126e6eac7d8c2d780569184ed5732866c080ada1700dc \
+  --amounts 10000000000
