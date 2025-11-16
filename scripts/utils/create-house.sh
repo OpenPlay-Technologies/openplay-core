@@ -118,8 +118,8 @@ if [ -z "$RECIPIENT_ADDRESS" ]; then
     exit 1
 fi
 
-if [ ! -f "packages/openplay_core/Move.toml" ]; then
-    print_error "This script must be run from the openplay-framework root directory"
+if [ ! -f "package/Move.toml" ]; then
+    print_error "This script must be run from the openplay-core root directory"
     exit 1
 fi
 

@@ -63,6 +63,9 @@ get_next_version() {
     local output_dir="outputs/$env"
     local versions_file="$output_dir/openplay_core_versions.txt"
     
+    # Create output directory if it doesn't exist
+    mkdir -p "$output_dir"
+    
     if [ ! -f "$versions_file" ]; then
         echo "1"
     else
@@ -130,8 +133,8 @@ save_env_vars() {
 }
 
 # Check if we're in the right directory
-if [ ! -f "packages/openplay_core/Move.toml" ]; then
-    print_error "This script must be run from the openplay-framework root directory"
+if [ ! -f "package/Move.toml" ]; then
+    print_error "This script must be run from the openplay-core root directory"
     exit 1
 fi
 
@@ -160,7 +163,7 @@ if [ -f "outputs/$ACTIVE_ENV/latest.env" ]; then
     source "outputs/$ACTIVE_ENV/latest.env"
     print_success "Loaded core package environment variables"
 else
-    print_error "Core package not deployed. Run ./scripts/deploy-core.sh first."
+    print_error "Core package not deployed. Run ./scripts/core/deploy-core.sh first."
     exit 1
 fi
 
@@ -190,7 +193,7 @@ print_status "Upgrading OpenPlay Core package..."
 print_status "Using upgrade capability: $ORIGINAL_UPGRADE_CAP"
 
 # Change to the core package directory
-cd packages/openplay_core
+cd package
 
 # Upgrade the package and capture the JSON output
 print_status "Upgrading package..."
@@ -235,7 +238,7 @@ export OPENPLAY_CORE_ADMIN_CAP
 export OPENPLAY_CORE_UPGRADE_CAP
 
 # Return to root directory
-cd ../..
+cd ..
 
 # Save version history
 save_version_history "$ACTIVE_ENV" "$OPENPLAY_CORE_VERSION" "$NEW_PACKAGE_ID"

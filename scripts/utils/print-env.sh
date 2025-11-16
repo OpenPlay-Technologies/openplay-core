@@ -17,8 +17,8 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 get_active_env() { sui client active-env 2>/dev/null || echo "unknown"; }
 
-if [ ! -f "packages/openplay_core/Move.toml" ]; then
-    print_error "This script must be run from the openplay-framework root directory"
+if [ ! -f "package/Move.toml" ]; then
+    print_error "This script must be run from the openplay-core root directory"
     exit 1
 fi
 
@@ -32,10 +32,8 @@ OUTPUT_DIR="outputs/$ACTIVE_ENV"
 
 print_status "Active environment: $ACTIVE_ENV"
 
-if [ ! -d "$OUTPUT_DIR" ]; then
-    print_error "Output directory not found: $OUTPUT_DIR"
-    exit 1
-fi
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
 
 # Collect candidate env files to source
 declare -a candidate_files=(

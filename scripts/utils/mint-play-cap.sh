@@ -32,8 +32,8 @@ if [ -z "$RECIPIENT_ADDRESS" ]; then
     exit 1
 fi
 
-if [ ! -f "packages/openplay_core/Move.toml" ]; then
-    print_error "This script must be run from the openplay-framework root directory"
+if [ ! -f "package/Move.toml" ]; then
+    print_error "This script must be run from the openplay-core root directory"
     exit 1
 fi
 
@@ -58,7 +58,7 @@ if [ -f "outputs/$ACTIVE_ENV/latest.env" ]; then
     source "outputs/$ACTIVE_ENV/latest.env"
     print_success "Loaded core package environment variables"
 else
-    print_error "Core package not deployed. Run ./scripts/deploy-core.sh first."
+    print_error "Core package not deployed. Run ./scripts/core/deploy-core.sh first."
     exit 1
 fi
 
@@ -67,7 +67,7 @@ if [ -f "outputs/$ACTIVE_ENV/latest_balance_manager.env" ]; then
     source "outputs/$ACTIVE_ENV/latest_balance_manager.env"
     print_success "Loaded balance manager environment variables"
 else
-    print_error "Balance manager not set up. Run ./scripts/setup-balance-manager.sh first."
+    print_error "Balance manager not set up. Run ./scripts/utils/setup-balance-manager.sh first."
     exit 1
 fi
 

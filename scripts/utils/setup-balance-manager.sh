@@ -106,8 +106,8 @@ save_env_vars() {
 }
 
 # Check if we're in the right directory
-if [ ! -f "packages/openplay_core/Move.toml" ]; then
-    print_error "This script must be run from the openplay-framework root directory"
+if [ ! -f "package/Move.toml" ]; then
+    print_error "This script must be run from the openplay-core root directory"
     exit 1
 fi
 
@@ -135,13 +135,13 @@ if [ -f "outputs/$ACTIVE_ENV/latest.env" ]; then
     source "outputs/$ACTIVE_ENV/latest.env"
     print_success "Loaded core package environment variables"
 else
-    print_error "Core package not deployed. Run ./scripts/deploy-core.sh first."
+    print_error "Core package not deployed. Run ./scripts/core/deploy-core.sh first."
     exit 1
 fi
 
 # Check if package variables are loaded
 if [ -z "$CURRENT_OPENPLAY_CORE_PACKAGE_ID" ]; then
-    print_error "Core package variables not loaded. Run ./scripts/deploy-core.sh first."
+    print_error "Core package variables not loaded. Run ./scripts/core/deploy-core.sh first."
     exit 1
 fi
 
