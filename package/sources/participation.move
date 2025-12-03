@@ -16,6 +16,8 @@ const ENotEmpty: u64 = 6;
 const ENotEnoughToUnstake: u64 = 7;
 
 // === Structs ===
+/// Represents a user's participation in a House, tracking stake, profits, and losses.
+/// Manages stake activation/deactivation across epochs and claimable balances.
 public struct Participation has key, store {
     id: UID,
     house_id: ID,
@@ -26,26 +28,31 @@ public struct Participation has key, store {
     pending_unstake: u64, // Pending unstake is stake that is currently active and will be moved to the claimable balance at the end of the epoch
 }
 
+/// Event emitted when a new Participation is created.
 public struct ParticipationCreatedEvent has copy, drop {
     participation_id: ID,
 }
 
+/// Event emitted when a Participation is removed (destroyed).
 public struct ParticipationRemovedEvent has copy, drop {
     participation_id: ID,
 }
 
+/// Event emitted when stake is added to a Participation.
 public struct StakeAddedEvent has copy, drop {
     participation_id: ID,
     amount: u64,
     pending: bool,
 }
 
+/// Event emitted when stake is removed from a Participation.
 public struct StakeRemovedEvent has copy, drop {
     participation_id: ID,
     amount: u64,
     pending_stake_removed: u64,
 }
 
+/// Event emitted when end-of-day processing completes for a Participation.
 public struct ParticipationEndOfDayProcessedEvent has copy, drop {
     participation_id: ID,
     profits: u64,

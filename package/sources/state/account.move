@@ -8,6 +8,8 @@ module openplay_core::account;
 // == Errors ==
 
 // === Structs ===
+/// Tracks account state for a balance manager, including lifetime statistics and pending balances.
+/// Used to accumulate transactions before settlement.
 public struct Account has store {
     lifetime_total_bets: u64,
     lifetime_total_wins: u64,
@@ -18,6 +20,7 @@ public struct Account has store {
 // === Public-View Functions ===
 
 // === Public-Package Functions ===
+/// Creates a new empty Account with all values initialized to zero.
 public(package) fun empty(): Account {
     Account {
         lifetime_total_bets: 0,
@@ -36,15 +39,19 @@ public(package) fun settle(self: &mut Account): (u64, u64) {
     (old_credit, old_debit)
 }
 
+/// Adds a credit (win) amount to the account's credit balance.
 public(package) fun credit(self: &mut Account, amount: u64) {
     self.credit_balance = self.credit_balance + amount;
 }
 
+/// Adds a debit (bet) amount to the account's debit balance.
 public(package) fun debit(self: &mut Account, amount: u64) {
     self.debit_balance = self.debit_balance + amount
 }
 
 // === Private Functions ===
+/// Resets both credit and debit balances to zero.
+/// Called after settlement to prepare for the next transaction batch.
 fun reset_balances(self: &mut Account) {
     self.credit_balance = 0;
     self.debit_balance = 0;

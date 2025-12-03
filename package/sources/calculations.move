@@ -1,9 +1,11 @@
+/// Module for financial calculations used in profit/loss sharing and amount actualization.
 module openplay_core::calculations;
 
 use openplay_core::core_constants::precision_error_allowance;
 use std::uq32_32::{from_quotient, int_mul, add, sub, from_int};
 
 // === Errors ===
+/// Error code for when losses exceed the base amount beyond the precision error allowance.
 const ELossTooHigh: u64 = 1;
 
 /// Actualizes an amount to include a part of the profits or losses,

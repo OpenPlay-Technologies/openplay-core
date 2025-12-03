@@ -1,22 +1,29 @@
+/// Module for storing key-value parameters using dynamic fields.
+/// Allows flexible parameter storage that can be frozen after initialization.
 module openplay_core::parameter_store;
 
 use sui::dynamic_field as df;
 use sui::transfer::freeze_object;
 
+/// Object that stores parameters as dynamic fields.
+/// Can be frozen to prevent further modifications.
 public struct ParameterStore has key {
     id: UID,
 }
 
 // === Public-View Functions ===
+/// Returns the ID of the ParameterStore.
 public fun id(self: &ParameterStore): ID {
     self.id.to_inner()
 }
 
 // === Public-Mutative Functions ===
+/// Creates a new ParameterStore.
 public fun new(ctx: &mut TxContext): ParameterStore {
     ParameterStore { id: object::new(ctx) }
 }
 
+/// Freezes the ParameterStore, preventing further modifications.
 public fun freeze_(self: ParameterStore) {
     freeze_object(self)
 }

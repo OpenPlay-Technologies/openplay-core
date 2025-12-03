@@ -38,9 +38,11 @@ const EInvalidGameStats: u64 = 13;
 const MAX_TX_CAPS: u64 = 1000;
 
 // === Structs ===
-/// OTW
+/// One-time witness type for the House module.
 public struct HOUSE has drop {}
 
+/// Main House object that processes and settles transactions between the vault and balance managers.
+/// Manages fee distribution, staking participation, and game authorization.
 public struct House has key {
     id: UID,
     admin_cap_id: ID,
@@ -54,35 +56,41 @@ public struct House has key {
     state: State,
 }
 
-/// The cap that is used to perform administrator functions.
+/// Capability object that grants administrative access to a House.
+/// Allows configuration changes like fee settings and game authorization.
 public struct HouseAdminCap has key, store {
     id: UID,
     house_id: ID,
 }
 
-/// The cap that is used to execute transaction.
+/// Capability object that authorizes a specific game to execute transactions on a House.
+/// Created by borrowing from the House's transaction allow list.
 public struct HouseTransactionCap {
     house_id: ID,
     game_id: ID,
 }
 
+/// Fee breakdown structure containing protocol, game, and referral fees.
 public struct Fees has copy, drop {
     protocol_fee: u64,
     game_fee: u64,
     referral_fee: u64,
 }
 
+/// Event emitted when a new House is created.
 public struct HouseCreatedEvent has copy, drop {
     house_id: ID,
     admin_cap_id: ID,
 }
 
+/// Event emitted when a game's fee is updated.
 public struct GameFeeUpdatedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
     game_fee_bps: u64,
 }
 
+/// Event emitted when transactions are processed by a game.
 public struct TransactionsProcessedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
@@ -92,27 +100,32 @@ public struct TransactionsProcessedEvent has copy, drop {
     fees: Fees,
 }
 
+/// Event emitted when a game is authorized to execute transactions.
 public struct GameTransactionsAllowedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
 }
 
+/// Event emitted when a game's transaction authorization is revoked.
 public struct GameTransactionsRevokedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
 }
 
+/// Event emitted when protocol fees are claimed by the OpenPlay admin.
 public struct ProtocolFeesClaimedEvent has copy, drop {
     house_id: ID,
     amount: u64,
 }
 
+/// Event emitted when referral fees are claimed by a referral owner.
 public struct ReferralFeesClaimedEvent has copy, drop {
     house_id: ID,
     referral_id: ID,
     amount: u64,
 }
 
+/// Event emitted when game fees are claimed by a game owner.
 public struct GameFeesClaimedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
@@ -120,41 +133,54 @@ public struct GameFeesClaimedEvent has copy, drop {
 }
 
 // === Public-View Functions ===
+/// Returns the ID of the House.
 public fun id(self: &House): ID {
     self.id.to_inner()
 }
 
+/// Returns whether the House is private (admin-only staking).
 public fun private(self: &House): bool {
     self.private
 }
 
+/// Returns the current play balance available for game payouts.
+/// Automatically processes end-of-day if needed.
 public fun play_balance(self: &mut House, ctx: &mut TxContext): u64 {
     self.process_end_of_day(ctx);
     self.vault.play_balance()
 }
 
+/// Returns the reserve balance (staked funds not yet in play).
+/// Automatically processes end-of-day if needed.
 public fun reserve_balance(self: &mut House, ctx: &mut TxContext): u64 {
     self.process_end_of_day(ctx);
     self.vault.reserve_balance()
 }
 
+/// Returns the referral fee factor as a UQ32_32 fixed-point number.
 public fun referral_fee_factor(self: &House): UQ32_32 {
     from_quotient(self.referral_fee_bps, 10000)
 }
 
+/// Returns the game fee factor for a specific game as a UQ32_32 fixed-point number.
+/// Returns 0 if the game has no configured fee.
 public fun game_fee_factor(self: &House, game_id: &ID): UQ32_32 {
     let game_fee_bps = self.games_fee_bps.try_get(game_id).get_with_default(0);
     from_quotient(game_fee_bps, 10000)
 }
 
+/// Returns the House ID associated with an admin cap.
 public fun admin_cap_house_id(cap: &HouseAdminCap): ID {
     cap.house_id
 }
 
+/// Returns the House ID associated with a transaction cap.
 public fun transaction_cap_house_id(cap: &HouseTransactionCap): ID {
     cap.house_id
 }
 
+/// Returns whether the House is currently active (has sufficient stake and is operational).
+/// Automatically processes end-of-day if needed.
 public fun is_active(self: &mut House, ctx: &TxContext): bool {
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
@@ -162,6 +188,8 @@ public fun is_active(self: &mut House, ctx: &TxContext): bool {
 }
 
 // === Public-Mutative Functions ===
+/// Shares the House object and registers it with the Registry.
+/// This makes the House publicly accessible for transactions.
 public fun share(registry: &mut Registry, house: House) {
     registry.register_house(house.id());
     share_object(house);
@@ -246,6 +274,8 @@ public fun unstake_v2(
     self.state.process_unstake(remaining_amount, pending_stake_removed, ctx);
 }
 
+/// Claims all claimable balance from a participation.
+/// Returns the claimable amount as a Coin<SUI>.
 public fun claim_all(
     self: &mut House,
     participation: &mut Participation,
@@ -263,6 +293,8 @@ public fun claim_all(
     self.vault.withdraw(claimable).into_coin(ctx)
 }
 
+/// Creates a new referral for this House and returns the ReferralCap.
+/// Can only be called if referral fees are enabled.
 public fun new_referral(self: &House, ctx: &mut TxContext): ReferralCap {
     self.assert_referral_active();
     let (referral, referral_cap) = referral::new(self.id(), ctx);
@@ -270,6 +302,8 @@ public fun new_referral(self: &House, ctx: &mut TxContext): ReferralCap {
     referral_cap
 }
 
+/// Borrows a transaction cap for a game that is authorized in the allow list.
+/// Aborts if the game is not authorized.
 public fun borrow_tx_cap(self: &House, game_id: &mut UID): HouseTransactionCap {
     assert!(self.tx_allow_listed.contains(game_id.as_inner()), EUnauthorizedGameId);
     HouseTransactionCap {
@@ -279,6 +313,9 @@ public fun borrow_tx_cap(self: &House, game_id: &mut UID): HouseTransactionCap {
 }
 
 // === Tx-Admin Functions ===
+/// Processes transactions for a game using a balance manager.
+/// Handles fee calculation, balance settlement, and statistics updates.
+/// Requires a valid transaction cap and play cap.
 public fun tx_admin_process_transactions_v2(
     self: &mut House,
     registry: &Registry,
@@ -354,6 +391,9 @@ public fun tx_admin_process_transactions_v2(
     })
 }
 
+/// Processes transactions for a game without requiring a pre-existing balance manager.
+/// Creates a temporary balance manager, processes transactions, and returns remaining funds.
+/// Useful for games that don't maintain persistent balance managers.
 public fun tx_admin_process_transactions_v2_no_bm(
     self: &mut House,
     registry: &Registry,
@@ -440,7 +480,7 @@ public fun tx_admin_process_transactions_v2_no_bm(
 }
 
 // === Referral-Admin Functions ===
-/// Claims all the referral fees for this house. Can only be called by the referral owner.
+/// Claims all the game fees for a specific game. Can only be called by the game owner using a transaction cap.
 public fun tx_admin_claim_game_fees(
     self: &mut House,
     cap: HouseTransactionCap,
@@ -463,7 +503,7 @@ public fun tx_admin_claim_game_fees(
 }
 
 // === House-Admin Functions ===
-/// Priviliged instruction for crceating a new participation. Should be used in case the house is `private`.
+/// Privileged instruction for creating a new participation. Should be used when the house is `private`.
 public fun admin_new_participation(
     self: &House,
     cap: &HouseAdminCap,
@@ -549,8 +589,8 @@ public fun referral_admin_claim_referral_fees(
 }
 
 // === Openplay admin functions ===
-/// Creates a new house.
-/// Returns (house, admin_cap, tx_cap)
+/// Creates a new House with the specified configuration.
+/// Returns (house, admin_cap) where admin_cap grants administrative access.
 public fun openplay_admin_new_house(
     _openplay_admin_cap: &OpenPlayAdminCap,
     private: bool,
@@ -602,6 +642,8 @@ public fun openplay_admin_claim_protocol_fees(
 }
 
 // == Private Functions ==
+/// Processes end-of-day when a new epoch is detected.
+/// Calculates profits/losses, updates participation state, and attempts to reactivate the house if possible.
 /// The first time this gets called on a new epoch, the end of the day procedure is initiated for the last known epoch.
 /// The vault saves the end of day balance for the house and resets to the target balance if there are enough funds available.
 /// Note: there can be a number of epochs in between without any activity.
@@ -634,28 +676,40 @@ fun process_end_of_day(self: &mut House, ctx: &TxContext) {
     }
 }
 
+/// Validates that the admin cap belongs to this House.
+/// Aborts if the cap's house_id doesn't match.
 fun assert_valid_admin_cap(self: &House, house_cap: &HouseAdminCap) {
     assert!(self.id() == house_cap.house_id, EInvalidAdminCap);
 }
 
+/// Validates that the transaction cap is valid for this House and game.
+/// Aborts if the game is not in the allow list or the house_id doesn't match.
 fun assert_valid_tx_cap(self: &House, tx_cap: HouseTransactionCap) {
     let HouseTransactionCap { house_id, game_id } = tx_cap;
     assert!(self.tx_allow_listed.contains(&game_id), EInvalidTxCap);
     assert!(self.id() == house_id, EInvalidTxCap);
 }
 
+/// Validates that the participation belongs to this House.
+/// Aborts if the participation's house_id doesn't match.
 fun assert_valid_participation(self: &House, participation: &Participation) {
     assert!(self.id() == participation.house_id(), EInvalidParticipation);
 }
 
+/// Asserts that the House is not private.
+/// Aborts if the House is private.
 fun assert_not_private(self: &House) {
     assert!(self.private() == false, EHouseIsPrivate);
 }
 
+/// Asserts that referral fees are enabled for this House.
+/// Aborts if referral_fee_bps is zero.
 fun assert_referral_active(self: &House) {
     assert!(self.referral_fee_bps > 0, EReferralNotEnabled);
 }
 
+/// Attempts to activate the House if there is sufficient stake.
+/// Funds the play balance if activation succeeds.
 fun activate_if_possible(self: &mut House, ctx: &TxContext) {
     // Do nothing if the current epoch is already activated
     if (self.state.is_active()) {

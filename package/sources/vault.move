@@ -16,6 +16,8 @@ const EReferralDoesNotExist: u64 = 3;
 const EGameDoesNotExist: u64 = 4;
 
 // === Structs ===
+/// Stores all assets for a House, including play balance, reserve balance, and collected fees.
+/// Manages the separation between funds available for game payouts and staked reserves.
 public struct Vault has store {
     epoch: u64,
     collected_protocol_fees: Balance<SUI>,
@@ -25,37 +27,47 @@ public struct Vault has store {
     reserve_balance: Balance<SUI>,
 }
 
+/// Event emitted when the play balance is funded from reserves.
 public struct PlayBalanceFundedEvent has copy, drop {
     amount: u64
 }
 
+/// Event emitted when the play balance is cleared back to reserves at end of epoch.
 public struct PlayBalanceClearedEvent has copy, drop {
     amount: u64
 }
 
 // === Public-View Functions ---
+/// Returns the current play balance available for game payouts.
 public fun play_balance(self: &Vault): u64 {
     self.play_balance.value()
 }
 
+/// Returns the reserve balance (staked funds not yet in play).
 public fun reserve_balance(self: &Vault): u64 {
     self.reserve_balance.value()
 }
 
+/// Returns the collected referral fees for a specific referral ID.
+/// Aborts if the referral doesn't exist.
 public fun collected_referral_fees(self: &Vault, referral_id: ID): u64 {
     assert!(self.collected_referral_fees.contains(&referral_id), EReferralDoesNotExist);
     self.collected_referral_fees[&referral_id].value()
 }
 
+/// Returns the collected game fees for a specific game ID.
+/// Aborts if the game doesn't exist.
 public fun collected_game_fees(self: &Vault, game_id: ID): u64 {
     assert!(self.collected_game_fees.contains(&game_id), EGameDoesNotExist);
     self.collected_game_fees[&game_id].value()
 }
 
+/// Returns the total collected protocol fees.
 public fun collected_protocol_fees(self: &Vault): u64 {
     self.collected_protocol_fees.value()
 }
 
+/// Returns the current epoch of the Vault.
 public fun epoch(self: &Vault): u64 {
     self.epoch
 }
@@ -112,10 +124,12 @@ public(package) fun fund_play_balance(self: &mut Vault, target_balance: u64) {
     });
 }
 
+/// Deposits stake into the reserve balance.
 public(package) fun deposit(self: &mut Vault, stake: Balance<SUI>) {
     self.reserve_balance.join(stake);
 }
 
+/// Withdraws the specified amount from the reserve balance.
 public(package) fun withdraw(self: &mut Vault, amount: u64): Balance<SUI> {
     self.reserve_balance.split(amount)
 }
@@ -171,6 +185,8 @@ public(package) fun settle_balance_manager(
     };
 }
 
+/// Processes and collects a protocol fee from the play balance.
+/// Aborts if there are insufficient funds.
 public(package) fun process_protocol_fee(self: &mut Vault, protocol_fee: u64) {
     assert!(self.play_balance.value() >= protocol_fee, EInsufficientFunds);
     if (protocol_fee > 0) {
@@ -179,6 +195,8 @@ public(package) fun process_protocol_fee(self: &mut Vault, protocol_fee: u64) {
     };
 }
 
+/// Processes and collects a game fee from the play balance for a specific game.
+/// Aborts if there are insufficient funds.
 public(package) fun process_game_fee(self: &mut Vault, game_id: ID, game_fee: u64) {
     assert!(self.play_balance.value() >= game_fee, EInsufficientFunds);
     if (game_fee > 0) {
@@ -189,6 +207,8 @@ public(package) fun process_game_fee(self: &mut Vault, game_id: ID, game_fee: u6
     };
 }
 
+/// Processes and collects a referral fee from the play balance for a specific referral.
+/// Aborts if there are insufficient funds.
 public(package) fun process_referral_fee(self: &mut Vault, referral_id: ID, referral_fee: u64) {
     assert!(self.play_balance.value() >= referral_fee, EInsufficientFunds);
     if (referral_fee > 0) {
@@ -200,12 +220,16 @@ public(package) fun process_referral_fee(self: &mut Vault, referral_id: ID, refe
 }
 
 // === Private Functions ===
+/// Ensures a referral fee balance exists for the given referral ID.
+/// Creates a zero balance if it doesn't exist.
 fun ensure_referral_fee_balance(self: &mut Vault, referral_id: ID) {
     if (!self.collected_referral_fees.contains(&referral_id)) {
         self.collected_referral_fees.insert(referral_id, balance::zero());
     };
 }
 
+/// Ensures a game fee balance exists for the given game ID.
+/// Creates a zero balance if it doesn't exist.
 fun ensure_game_fee_balance(self: &mut Vault, game_id: ID) {
     if (!self.collected_game_fees.contains(&game_id)) {
         self.collected_game_fees.insert(game_id, balance::zero());

@@ -14,6 +14,8 @@ use sui::event::emit;
 use sui::table::{Self, Table};
 
 // === Structs ===
+/// Maintains the global state of a House, tracking accounts, stake, volumes, and history.
+/// Processes transactions, manages stake activation/deactivation, and calculates profit/loss sharing.
 public struct State has store {
     accounts: Table<ID, Account>,
     epoch: u64, // The current epoch of the state
@@ -34,21 +36,25 @@ public struct State has store {
     eod_history: Table<u64, EndOfDay>,
 }
 
+/// Volume statistics for a specific epoch, tracking stake and transaction amounts.
 public struct Volumes has copy, drop, store {
     active_stake_amount: u64,
     total_bet_amount: u64,
     total_win_amount: u64,
 }
 
+/// End-of-day summary containing profits and losses for a specific epoch.
 public struct EndOfDay has copy, drop, store {
     day_profits: u64,
     day_losses: u64,
 }
 
+/// Event emitted when a House is activated (has sufficient stake).
 public struct HouseActivatedEvent has copy, drop {
     active_stake: u64,
 }
 
+/// Event emitted when end-of-day processing completes for a State.
 public struct StateEndOfDayProcessedEvent has copy, drop {
     epoch: u64,
     profits: u64,
@@ -70,72 +76,91 @@ const EHouseIsNotActive: u64 = 8;
 const EHouseIsAlreadyActive: u64 = 9;
 
 // == Public-View Functions ==
+/// Returns whether the House is currently active.
 public fun is_active(self: &State): bool {
     self.is_active
 }
 
+/// Returns the current epoch of the State.
 public fun epoch(self: &State): u64 {
     self.epoch
 }
 
+/// Returns the currently active stake amount.
 public fun active_stake(self: &State): u64 {
     self.active_stake
 }
 
+/// Returns the inactive stake amount (available for activation).
 public fun inactive_stake(self: &State): u64 {
     self.inactive_stake
 }
 
+/// Returns the pending unstake amount (will be deactivated next epoch).
 public fun pending_unstake(self: &State): u64 {
     self.pending_unstake
 }
 
+/// Returns the volume statistics for a specific historic epoch.
+/// Aborts if the epoch is not found.
 public fun volume_for_epoch(self: &State, epoch: u64): Volumes {
     assert!(self.historic_volumes.contains(epoch), EVolumeNotAvailable);
     self.historic_volumes[epoch]
 }
 
+/// Returns the all-time total bet amount.
 public fun all_time_bet_amount(self: &State): u128 {
     self.all_time_bet_amount
 }
 
+/// Returns the all-time total win amount.
 public fun all_time_win_amount(self: &State): u128 {
     self.all_time_win_amount
 }
 
+/// Returns the all-time total profits.
 public fun all_time_profits(self: &State): u128 {
     self.all_time_profits
 }
 
+/// Returns the all-time total losses.
 public fun all_time_losses(self: &State): u128 {
     self.all_time_losses
 }
 
+/// Returns the active stake amount from volumes.
 public fun active_stake_amount(volume: &Volumes): u64 {
     volume.active_stake_amount
 }
 
+/// Returns the total bet amount from volumes.
 public fun total_bet_amount(volume: &Volumes): u64 {
     volume.total_bet_amount
 }
 
+/// Returns the total win amount from volumes.
 public fun total_win_amount(volume: &Volumes): u64 {
     volume.total_win_amount
 }
 
+/// Returns the current epoch's volume statistics.
 public fun current_volumes(self: &State): Volumes {
     self.current_volumes
 }
 
+/// Returns the end-of-day summary for a specific epoch.
+/// Aborts if the epoch is not found.
 public fun end_of_day_for_epoch(self: &State, epoch: u64): EndOfDay {
     assert!(self.eod_history.contains(epoch), EEndOfDayNotAvailable);
     self.eod_history[epoch]
 }
 
+/// Returns the day profits from an end-of-day summary.
 public fun day_profits(eod: &EndOfDay): u64 {
     eod.day_profits
 }
 
+/// Returns the day losses from an end-of-day summary.
 public fun day_losses(eod: &EndOfDay): u64 {
     eod.day_losses
 }
@@ -316,6 +341,7 @@ public(package) fun process_end_of_day(
     })
 }
 
+/// Creates a new State with all values initialized to zero and epoch set to current epoch.
 public(package) fun new(ctx: &mut TxContext): State {
     State {
         accounts: table::new(ctx),
@@ -388,6 +414,8 @@ public(package) fun epoch_active(self: &State, epoch: u64): bool {
     self.active_history[epoch]
 }
 
+/// Returns the active stake amount for a specific epoch.
+/// Returns 0 if the epoch is not in history or is in the future.
 public(package) fun active_stake_at_epoch(self: &State, epoch: u64): u64 {
     // Check if the epoch is in the future
     assert!(epoch <= self.epoch, EEpochMismatch);
@@ -404,6 +432,9 @@ public(package) fun active_stake_at_epoch(self: &State, epoch: u64): u64 {
     self.volume_for_epoch(epoch).active_stake_amount()
 }
 
+/// Calculates the gross gaming revenue (GGR) share for an account's stake in a specific epoch.
+/// Returns (profits, losses) where profits and losses are the account's proportional share.
+/// Returns (0, 0) if epoch data is unavailable, no stake, or house was inactive.
 public(package) fun calculate_ggr_share(self: &State, epoch: u64, account_stake: u64): (u64, u64) {
     // If the epoch data is unavailable, there is no ggr_share
     if (
@@ -433,8 +464,8 @@ public(package) fun calculate_ggr_share(self: &State, epoch: u64, account_stake:
 }
 
 // == Private Functions ==
-/// Advances the account state to the latest epoch, if this is not the case.
-/// Inactive stake will be activated, while profits / losses will be added to the active stake.
+/// Advances the participation state to the latest epoch by processing all missed epochs.
+/// Calculates and applies profit/loss shares for each epoch between last_updated_epoch and current epoch.
 fun update_participation(self: &State, participation: &mut Participation, ctx: &TxContext) {
     let (
         mut current_participation_epoch,
@@ -462,8 +493,8 @@ fun update_participation(self: &State, participation: &mut Participation, ctx: &
     }
 }
 
-/// Advances the account state to the latest epoch, if this is not the case.
-/// Inactive stake will be activated, while profits / losses will be added to the active stake.
+/// Ensures an account exists for the given balance_manager_id.
+/// Creates a new empty account if one doesn't exist.
 fun update_account(self: &mut State, balance_manager_id: ID) {
     if (!self.accounts.contains(balance_manager_id)) {
         self.accounts.add(balance_manager_id, account::empty());
@@ -503,7 +534,8 @@ fun process_volumes(self: &mut State, transactions: &vector<Transaction>) {
     });
 }
 
-/// Calculates the total fee for the owner based on the transactions
+/// Calculates the total fee based on debit transactions and a fee factor.
+/// Only bet (debit) transactions are subject to fees.
 fun calculate_fee(transactions: &vector<Transaction>, house_fee_factor: UQ32_32): u64 {
     let mut total_fee = 0;
     transactions.do_ref!(|tx| {
@@ -515,6 +547,8 @@ fun calculate_fee(transactions: &vector<Transaction>, house_fee_factor: UQ32_32)
     total_fee
 }
 
+/// Activates the House state by moving inactive stake to active stake.
+/// Aborts if the state is already active.
 fun activate(self: &mut State) {
     // Can only activate if not activated yet
     assert!(self.is_active == false, EHouseIsAlreadyActive);
@@ -531,16 +565,21 @@ fun activate(self: &mut State) {
     })
 }
 
+/// Processes a bet transaction by updating volume statistics.
 fun process_bet(self: &mut State, amount: u64) {
     self.current_volumes.total_bet_amount = self.current_volumes.total_bet_amount + amount;
     self.all_time_bet_amount = self.all_time_bet_amount + (amount as u128);
 }
 
+/// Processes a win transaction by updating volume statistics.
 fun process_win(self: &mut State, amount: u64) {
     self.current_volumes.total_win_amount = self.current_volumes.total_win_amount + amount;
     self.all_time_win_amount = self.all_time_win_amount + (amount as u128);
 }
 
+/// Removes stake from the inactive stake balance.
+/// Allows small precision errors up to the precision error allowance.
+/// Aborts if attempting to remove more than available (beyond precision allowance).
 fun remove_inactive_stake(self: &mut State, amount: u64) {
     if (self.inactive_stake >= amount) {
         self.inactive_stake = self.inactive_stake - amount;
@@ -552,22 +591,25 @@ fun remove_inactive_stake(self: &mut State, amount: u64) {
     }
 }
 
+/// Adds amount to the pending unstake balance (will be deactivated next epoch).
 fun add_pending_unstake(self: &mut State, amount: u64) {
     self.pending_unstake = self.pending_unstake + amount;
 }
 
-/// Stakes `amount` by adding it to the `inactive_stake` balance.
+/// Adds stake to the inactive stake balance.
 fun add_stake(self: &mut State, amount: u64) {
     self.inactive_stake = self.inactive_stake + amount;
 }
 
-/// Desactivates the state by 1) moving the active stake back to inactive and 2) setting is_active to false
+/// Deactivates the state by moving active stake back to inactive and setting is_active to false.
+/// Called at end of epoch to reset for the next cycle.
 fun desactivate(self: &mut State) {
     self.inactive_stake = self.inactive_stake + self.active_stake;
     self.active_stake = 0;
     self.is_active = false;
 }
 
+/// Creates a new Volumes struct with all values initialized to zero.
 fun new_volumes(): Volumes {
     Volumes {
         active_stake_amount: 0,
@@ -576,10 +618,14 @@ fun new_volumes(): Volumes {
     }
 }
 
+/// Asserts that the House is currently active.
+/// Aborts if the House is not active.
 fun assert_active(self: &State) {
     assert!(self.is_active == true, EHouseIsNotActive);
 }
 
+/// Asserts that the State's epoch matches the current transaction epoch.
+/// Aborts if epochs don't match.
 fun assert_epoch_up_to_date(self: &State, ctx: &TxContext) {
     assert!(self.epoch == ctx.epoch(), EEpochMismatch);
 }

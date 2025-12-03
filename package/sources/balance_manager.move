@@ -23,6 +23,8 @@ const EBalanceNotEmpty: u64 = 7;
 const MAX_PLAY_CAPS: u64 = 1000;
 
 // === Structs ===
+/// Shared object that manages player balances for game transactions.
+/// Tracks SUI balance and maintains a list of authorized PlayCap IDs for delegated access.
 public struct BalanceManager has key {
     id: UID,
     balance: Balance<SUI>,
@@ -30,6 +32,8 @@ public struct BalanceManager has key {
     cap_id: ID,
 }
 
+/// Capability object that grants ownership and administrative access to a BalanceManager.
+/// Only the holder of this cap can perform owner-only operations like deposits, withdrawals, and PlayCap management.
 public struct BalanceManagerCap has key, store {
     id: UID,
     balance_manager_id: ID,
@@ -48,26 +52,31 @@ public struct PlayProof has drop {
     player: address,
 }
 
+/// Event emitted when a new BalanceManager is created.
 public struct BalanceManagerCreatedEvent has copy, drop {
     balance_manager_id: ID,
     balance_manager_cap_id: ID,
 }
 
+/// Event emitted when a deposit is completed to a BalanceManager.
 public struct DepositCompletedEvent has copy, drop {
     balance_manager_id: ID,
     amount: u64,
 }
 
+/// Event emitted when a withdrawal is processed from a BalanceManager.
 public struct WithdrawalProcessedEvent has copy, drop {
     balance_manager_id: ID,
     amount: u64,
 }
 
+/// Event emitted when a new PlayCap is minted for a BalanceManager.
 public struct PlayCapMintedEvent has copy, drop {
     balance_manager_id: ID,
     play_cap_id: ID,
 }
 
+/// Event emitted when a PlayCap is revoked from a BalanceManager.
 public struct PlayCapRevokedEvent has copy, drop {
     balance_manager_id: ID,
     play_cap_id: ID,
@@ -79,18 +88,22 @@ public fun id(self: &BalanceManager): ID {
     self.id.to_inner()
 }
 
+/// Returns the ID of the PlayCap.
 public fun cap_id(play_cap: &PlayCap): ID {
     play_cap.id.to_inner()
 }
 
+/// Returns the BalanceManager ID associated with this PlayCap.
 public fun cap_balance_manager_id(play_cap: &PlayCap): ID {
     play_cap.balance_manager_id
 }
 
+/// Returns the BalanceManager ID from a PlayProof.
 public fun proof_balance_manager_id(proof: &PlayProof): ID {
     proof.balance_manager_id
 }
 
+/// Returns the player address from a PlayProof.
 public fun player(proof: &PlayProof): address {
     proof.player
 }
@@ -101,6 +114,8 @@ public fun balance(self: &BalanceManager): u64 {
 }
 
 // === Public-Mutative Functions ===
+/// Creates a new BalanceManager and its associated BalanceManagerCap.
+/// Returns both objects, with the cap granting ownership rights to the manager.
 public fun new(ctx: &mut TxContext): (BalanceManager, BalanceManagerCap) {
     let cap_id = object::new(ctx);
 
@@ -124,6 +139,8 @@ public fun new(ctx: &mut TxContext): (BalanceManager, BalanceManagerCap) {
     (balance_manager, balance_manager_cap)
 }
 
+/// Shares the BalanceManager object, making it accessible to all users.
+/// This is required before the BalanceManager can be used in game transactions.
 public fun share(self: BalanceManager) {
     share_object(self)
 }
@@ -242,10 +259,14 @@ public fun withdraw_all(
     withdraw_with_proof(self, &proof, withdraw_amount).into_coin(ctx)
 }
 
+/// Validates that a PlayProof is valid for the given BalanceManager.
+/// Aborts if the proof's balance_manager_id doesn't match the BalanceManager's ID.
 public fun validate_proof(balance_manager: &BalanceManager, proof: &PlayProof) {
     assert!(object::id(balance_manager) == proof.balance_manager_id, EInvalidProof);
 }
 
+/// Destroys an empty BalanceManager and its cap.
+/// Can only be called by the owner and only when the balance is zero.
 public fun destroy_empty(self: BalanceManager, cap: BalanceManagerCap) {
     self.validate_owner(&cap);
     self.validate_balance_empty();
@@ -283,20 +304,28 @@ public(package) fun deposit_with_proof(
     self.balance.join(to_deposit);
 }
 
+/// Ensures the BalanceManager has sufficient funds for the requested amount.
+/// Aborts if the balance is less than the required amount.
 public(package) fun ensure_sufficient_funds(self: &BalanceManager, amount: u64) {
     assert!(self.balance.value() >= amount, EBalanceTooLow);
 }
 
 // === Private Functions ===
+/// Validates that the provided cap is the owner of this BalanceManager.
+/// Aborts if the cap doesn't match the stored cap_id or balance_manager_id.
 fun validate_owner(self: &BalanceManager, cap: &BalanceManagerCap) {
     assert!(cap.balance_manager_id == self.id(), EInvalidOwner);
     assert!(cap.id.as_inner() == self.cap_id, EInvalidOwner);
 }
 
+/// Validates that the provided PlayCap is authorized for this BalanceManager.
+/// Aborts if the PlayCap ID is not in the allow list.
 fun validate_player(balance_manager: &BalanceManager, play_cap: &PlayCap) {
     assert!(balance_manager.tx_allow_listed.contains(object::borrow_id(play_cap)), EInvalidPlayer);
 }
 
+/// Validates that the BalanceManager has zero balance.
+/// Aborts if there are any remaining funds.
 fun validate_balance_empty(self: &BalanceManager) {
     assert!(self.balance() == 0, EBalanceNotEmpty);
 }
