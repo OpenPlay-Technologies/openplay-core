@@ -7,7 +7,7 @@ use openplay_core::vault;
 use sui::coin::mint_for_testing;
 use sui::sui::SUI;
 use sui::test_scenario::{begin, next_epoch};
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 #[test]
 public fun deposit_withdraw_ok() {

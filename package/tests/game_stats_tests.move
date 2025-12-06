@@ -4,7 +4,7 @@ module openplay_core::game_stats_tests;
 use openplay_core::game_stats;
 use openplay_core::transaction::{bet, win};
 use sui::test_scenario::{begin, next_epoch};
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 #[test]
 public fun process_transactions_ok() {

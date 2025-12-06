@@ -20,7 +20,7 @@ use std::uq32_32::{UQ32_32, int_mul, from_quotient};
 use sui::coin::{mint_for_testing, burn_for_testing};
 use sui::sui::SUI;
 use sui::test_scenario::begin;
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 public fun four_fifths(): UQ32_32 {
     from_quotient(4, 5)

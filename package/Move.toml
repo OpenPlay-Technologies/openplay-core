@@ -3,5 +3,9 @@ name = "openplay_core"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 version = "1.1"
 
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "mainnet-v1.61.2" }
+
+
 [addresses]
 openplay_core = "0x0"

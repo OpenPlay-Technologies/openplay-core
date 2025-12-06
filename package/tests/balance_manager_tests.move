@@ -5,7 +5,7 @@ use openplay_core::balance_manager;
 use sui::coin::{mint_for_testing, burn_for_testing};
 use sui::sui::SUI;
 use sui::test_scenario::begin;
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 #[test, expected_failure(abort_code = balance_manager::EBalanceTooLow)]
 public fun deposit_withdraw_int() { let addr = @0xA; let mut scenario = begin(addr); {

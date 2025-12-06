@@ -7,7 +7,7 @@ use openplay_core::transaction::{bet, win};
 use std::option::{some, none};
 use std::uq32_32::{int_mul, from_quotient, add, from_int, sub};
 use sui::test_scenario::begin;
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 #[test]
 public fun transactions_process_referral_fee_ok() {

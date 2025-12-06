@@ -2,7 +2,7 @@
 module openplay_core::account_tests;
 
 use openplay_core::account;
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 #[test]
 public fun settle_ok() {

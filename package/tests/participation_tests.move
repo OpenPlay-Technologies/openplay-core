@@ -4,7 +4,7 @@ module openplay_core::participation_tests;
 use openplay_core::core_test_utils::{default_house, assert_eq_within_precision_allowance};
 use openplay_core::participation;
 use sui::test_scenario::begin;
-use sui::test_utils::destroy;
+use std::unit_test::destroy;
 
 #[test]
 public fun stake_unstake_ok() {
