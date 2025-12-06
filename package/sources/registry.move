@@ -102,7 +102,7 @@ fun init(_: REGISTRY, ctx: &mut TxContext) {
         id: object::new(ctx),
         allowed_versions,
         houses: vector::empty(),
-        protocol_fee_bps: 0,
+        protocol_fee_bps: 10, // 0.1%
         game_stats_id: table::new(ctx),
     };
     transfer::share_object(registry);
