@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [v2.1] - In Progress
 
 ### Added
+- Epoch limit parameter to `update_participation` to prevent DoS attacks (H-01 security fix)
+  - Added `max_epochs` parameter to `house_state::update_participation()` function
+  - Added `refresh_with_limit()` function in `house_state` module for chunked epoch processing
+  - Added `update_participation_with_limit()` public function in `house` module
+  - Default behavior unchanged: `update_participation()` still processes all epochs (uses `u64::MAX`)
+  - New function returns `true` if all epochs were processed, `false` if more epochs remain
+  - Added test `update_participation_with_epoch_limit` to verify chunked processing works correctly
 - Project context documentation for future development sessions (`.cursor/project-context.md`)
 - CHANGELOG.md file to track all changes going forward
 - House fee (performance fee) system that takes a percentage of profits from each epoch

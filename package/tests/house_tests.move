@@ -1340,3 +1340,99 @@ public fun process_transactions_invalid_stats() {
     );
     abort 0
 }
+
+#[test]
+public fun update_participation_with_epoch_limit() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+
+    // Create a new house and participation
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let registry = registry_for_testing(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+
+    // Stake funds to activate the house
+    let stake = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.stake(&mut participation, stake, scenario.ctx());
+
+    // Process some transactions to generate profits
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+    // Deposit funds to the balance manager
+    let deposit_coins = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, deposit_coins, scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+    let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    
+    // Generate some profits
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[bet(10_000), win(5_000)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // Advance 10 epochs without updating participation (simulating user inactivity)
+    // Use a dummy participation to trigger end-of-day processing for the house
+    let mut dummy_participation = participation::empty(house.id(), scenario.ctx());
+    let last_updated_epoch = participation.last_updated_epoch();
+    
+    // Advance epochs and process end of day for each to generate history
+    // We use dummy_participation to trigger house.process_end_of_day via update_participation
+    let mut i = 0;
+    while (i < 10) {
+        scenario.next_epoch(addr);
+        // Update dummy participation to trigger house end-of-day processing
+        house.update_participation(&mut dummy_participation, scenario.ctx());
+        i = i + 1;
+    };
+
+    // Verify participation is still at the initial epoch (not updated)
+    assert!(participation.last_updated_epoch() == last_updated_epoch);
+
+    // Try to update with a limit of 3 epochs at a time
+    // First call: should process 3 epochs and return false (more epochs remain)
+    let all_processed_1 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    assert!(all_processed_1 == false);
+    assert!(participation.last_updated_epoch() == last_updated_epoch + 3);
+
+    // Second call: should process 3 more epochs
+    let all_processed_2 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    assert!(all_processed_2 == false);
+    assert!(participation.last_updated_epoch() == last_updated_epoch + 6);
+
+    // Third call: should process 3 more epochs
+    let all_processed_3 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    assert!(all_processed_3 == false);
+    assert!(participation.last_updated_epoch() == last_updated_epoch + 9);
+
+    // Fourth call: should process the remaining 1 epoch and return true (all processed)
+    let all_processed_4 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    assert!(all_processed_4 == true);
+    assert!(participation.last_updated_epoch() == scenario.ctx().epoch());
+
+    // Verify that the default update_participation still works (processes all epochs)
+    // Advance one more epoch
+    scenario.next_epoch(addr);
+    // Use dummy participation to trigger end-of-day processing
+    house.update_participation(&mut dummy_participation, scenario.ctx());
+    
+    // Update without limit - should process all epochs in one call
+    house.update_participation(&mut participation, scenario.ctx());
+    assert!(participation.last_updated_epoch() == scenario.ctx().epoch());
+
+    destroy(participation);
+    destroy(dummy_participation);
+    destroy(house);
+    destroy(admin_cap);
+    destroy(registry);
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap);
+    destroy(stats);
+    scenario.end();
+}

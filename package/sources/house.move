@@ -234,6 +234,8 @@ public fun stake(
 }
 
 /// Refreshes the participation to process any unprocessed profits or losses.
+/// Updates a participation to the current epoch, processing all missed epochs.
+/// This is the default behavior and processes all epochs in a single call.
 public fun update_participation(
     self: &mut House,
     participation: &mut Participation,
@@ -244,8 +246,30 @@ public fun update_participation(
     // Make sure the end of day is processed
     self.process_end_of_day(ctx);
 
-    // Refresh the participation
+    // Refresh the participation (processes all epochs by default)
     self.state.refresh(participation, ctx);
+}
+
+/// Updates a participation with a limit on the number of epochs processed per call.
+/// Returns `true` if all epochs were processed, `false` if more epochs remain.
+/// Useful for catching up participations that haven't been updated for many epochs.
+/// 
+/// # Parameters
+/// - `max_epochs`: Maximum number of epochs to process in this call. Use a reasonable value (e.g., 100) 
+///                 to prevent gas limit issues when catching up after many epochs.
+public fun update_participation_with_limit(
+    self: &mut House,
+    participation: &mut Participation,
+    max_epochs: u64,
+    ctx: &mut TxContext,
+): bool {
+    self.assert_valid_participation(participation);
+
+    // Make sure the end of day is processed
+    self.process_end_of_day(ctx);
+
+    // Refresh the participation with epoch limit
+    self.state.refresh_with_limit(participation, max_epochs, ctx)
 }
 
 /// Withdraws the stake from the current game. This only goes into effect in the next epoch.

@@ -361,8 +361,22 @@ public(package) fun new(ctx: &mut TxContext): State {
 /// This can be used to claim profits or to claim unstaked amount that can available.
 /// Returns a tuple (credit_balance, debit_balance).
 /// The Vault uses thes values to perform any necessary transfers in the balance manager.
+/// 
+/// By default, processes all epochs. Use `refresh_with_limit` to limit epochs processed per call.
 public(package) fun refresh(self: &State, participation: &mut Participation, ctx: &TxContext) {
-    self.update_participation(participation, ctx);
+    self.update_participation(participation, std::u64::max_value!(), ctx); // u64::MAX
+}
+
+/// Same as `refresh` but allows limiting the number of epochs processed per call.
+/// Returns `true` if all epochs were processed, `false` if more epochs remain.
+/// Useful for catching up participations that haven't been updated for many epochs.
+public(package) fun refresh_with_limit(
+    self: &State,
+    participation: &mut Participation,
+    max_epochs: u64,
+    ctx: &TxContext,
+): bool {
+    self.update_participation(participation, max_epochs, ctx)
 }
 
 /// Function that activates the house if 1) it is not active yet and 2) there is enough pending stake.
@@ -457,9 +471,21 @@ public(package) fun calculate_ggr_share(self: &State, epoch: u64, account_stake:
 }
 
 // == Private Functions ==
-/// Advances the participation state to the latest epoch by processing all missed epochs.
+/// Advances the participation state to the latest epoch by processing missed epochs.
 /// Calculates and applies profit/loss shares for each epoch between last_updated_epoch and current epoch.
-fun update_participation(self: &State, participation: &mut Participation, ctx: &TxContext) {
+/// 
+/// # Parameters
+/// - `max_epochs`: Maximum number of epochs to process in this call. Use `u64::MAX` to process all epochs (default behavior).
+///                  This prevents DoS attacks when a participation hasn't been updated for many epochs.
+/// 
+/// # Returns
+/// Returns `true` if all epochs were processed, `false` if more epochs remain to be processed.
+fun update_participation(
+    self: &State,
+    participation: &mut Participation,
+    max_epochs: u64,
+    ctx: &TxContext,
+): bool {
     let (
         mut current_participation_epoch,
         mut stake,
@@ -467,8 +493,12 @@ fun update_participation(self: &State, participation: &mut Participation, ctx: &
         mut _pending_unstake,
     ) = participation.current_state();
 
-    // process the account's ggr share for all epochs between the last activate epoch and the current one
-    while (current_participation_epoch < ctx.epoch()) {
+    let target_epoch = ctx.epoch();
+    let mut epochs_processed = 0;
+
+    // process the account's ggr share for epochs between the last activate epoch and the current one
+    // but limit the number of epochs processed to prevent DoS
+    while (current_participation_epoch < target_epoch && epochs_processed < max_epochs) {
         let (epoch_profits, epoch_losses) = self.calculate_ggr_share(
             current_participation_epoch,
             stake,
@@ -483,7 +513,12 @@ fun update_participation(self: &State, participation: &mut Participation, ctx: &
 
         (current_participation_epoch, stake, _pending_stake, _pending_unstake) =
             participation.current_state();
-    }
+        
+        epochs_processed = epochs_processed + 1;
+    };
+
+    // Return true if we've caught up to the current epoch, false if more epochs remain
+    current_participation_epoch >= target_epoch
 }
 
 /// Ensures an account exists for the given balance_manager_id.
