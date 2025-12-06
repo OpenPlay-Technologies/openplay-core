@@ -11,10 +11,8 @@ use openplay_core::core_test_utils::{
 use openplay_core::game_stats;
 use openplay_core::house;
 use openplay_core::participation;
-use openplay_core::referral;
 use openplay_core::registry::{Self, registry_for_testing};
 use openplay_core::transaction::{bet, win};
-use std::option::{some, none};
 use std::unit_test::assert_eq;
 use std::uq32_32::{UQ32_32, int_mul, from_quotient};
 use sui::coin::{mint_for_testing, burn_for_testing};
@@ -43,7 +41,6 @@ public fun complete_flow_share_losses() {
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
 
     // Deposit 50_000 on the balance manager
     let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -74,14 +71,12 @@ public fun complete_flow_share_losses() {
         &mut balance_manager,
         &vector[bet(10_000), win(20_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
 
     let expected_fee =
         int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor())
-        + int_mul(10_000, house.referral_fee_factor());
+        + int_mul(10_000, registry.protocol_fee_factor());
     assert!(balance_manager.balance() == 60_000); // The 10k in profits is added to the first balance manager
     assert!(house.play_balance(scenario.ctx()) == 90_000 - expected_fee); // The losses and fees are deducted from the play balance
 
@@ -144,8 +139,6 @@ public fun complete_flow_share_losses() {
     destroy(balance_manager_cap);
     destroy(participation);
     destroy(another_participation);
-    destroy(referral);
-    destroy(referral_cap);
     destroy(stats);
     scenario.end();
 }
@@ -163,7 +156,6 @@ public fun complete_flow_share_profits() {
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
 
     // Deposit 50_000 on the balance manager
     let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -192,13 +184,11 @@ public fun complete_flow_share_profits() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
     let expected_fee =
         int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor())
-        + int_mul(10_000, house.referral_fee_factor());
+        + int_mul(10_000, registry.protocol_fee_factor());
     assert!(balance_manager.balance() == 45_000); // The 5k in losses is added to the first balance manager
     assert!(house.play_balance(scenario.ctx()) == 105_000 - expected_fee); // The profits are added to the play_balance, minus the fees
 
@@ -265,8 +255,6 @@ public fun complete_flow_share_profits() {
     destroy(balance_manager);
     destroy(participation);
     destroy(another_participation);
-    destroy(referral);
-    destroy(referral_cap);
     destroy(stats);
     scenario.end();
 }
@@ -284,7 +272,6 @@ public fun complete_flow_share_profits_multi_round() {
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
 
     // Deposit 50_000 on the balance manager
     let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -310,13 +297,11 @@ public fun complete_flow_share_profits_multi_round() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
     let expected_fee =
         int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor())
-        + int_mul(10_000, house.referral_fee_factor());
+        + int_mul(10_000, registry.protocol_fee_factor());
 
     // Skip 1 epoch without any activity and process some more transactions
     scenario.next_epoch(addr);
@@ -329,7 +314,6 @@ public fun complete_flow_share_profits_multi_round() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
 
@@ -377,8 +361,6 @@ public fun complete_flow_share_profits_multi_round() {
     destroy(balance_manager);
     destroy(participation);
     destroy(another_participation);
-    destroy(referral);
-    destroy(referral_cap);
     destroy(stats);
     scenario.end();
 }
@@ -396,7 +378,6 @@ public fun complete_flow_profits_and_losses_multi_round() {
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
 
     // Deposit 50_000 on the balance manager
     let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -422,13 +403,11 @@ public fun complete_flow_profits_and_losses_multi_round() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
     let expected_fee =
         int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor())
-        + int_mul(10_000, house.referral_fee_factor());
+        + int_mul(10_000, registry.protocol_fee_factor());
 
     // Skip 1 epoch without any activity and process some more transactions
     // Net result should be even
@@ -442,7 +421,6 @@ public fun complete_flow_profits_and_losses_multi_round() {
         &mut balance_manager,
         &vector[bet(10_000), win(15_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
 
@@ -490,8 +468,6 @@ public fun complete_flow_profits_and_losses_multi_round() {
     destroy(balance_manager);
     destroy(participation);
     destroy(another_participation);
-    destroy(referral);
-    destroy(referral_cap);
     destroy(stats);
     scenario.end();
 }
@@ -509,7 +485,6 @@ public fun complete_flow_multiple_funded_rounds() {
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
 
     // Deposit 50_000 on the balance manager
     let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -540,13 +515,11 @@ public fun complete_flow_multiple_funded_rounds() {
         &mut balance_manager,
         &vector[bet(10_000), win(20_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
     let expected_fee =
         int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor())
-        + int_mul(10_000, house.referral_fee_factor());
+        + int_mul(10_000, registry.protocol_fee_factor());
     assert!(balance_manager.balance() == 60_000); // The 10k in profits is added to the first balance manager
     assert!(house.play_balance(scenario.ctx()) == 140_000 - expected_fee); // The losses and fees are deducted from the play balance
     assert!(participation.stake() == 30_000);
@@ -605,8 +578,6 @@ public fun complete_flow_multiple_funded_rounds() {
     destroy(participation);
     destroy(another_participation);
     destroy(balance_manager_cap);
-    destroy(referral);
-    destroy(referral_cap);
     destroy(stats);
     scenario.end();
 }
@@ -639,7 +610,6 @@ public fun insufficient_funds_should_fail() {
         &mut balance_manager,
         &vector[bet(10_000), win(20_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
     abort 0
@@ -776,15 +746,10 @@ public fun collect_fees_ok() {
     let (mut house, admin_cap) = default_house(scenario.ctx());
     let participation = fund_house_for_playing(&mut house, 100_000, scenario.ctx());
     scenario.next_epoch(addr);
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
 
     let tx_cap = house.tx_cap_for_testing(game_id);
 
-    house.add_referral_fees_for_testing(&referral, 100, scenario.ctx());
     house.add_game_fees_for_testing(game_id, 200, scenario.ctx());
-
-    let coin1 = house.referral_admin_claim_referral_fees(&referral_cap, scenario.ctx());
-    assert!(coin1.value() == 100);
 
     let coin2 = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
     assert!(coin2.value() == 200);
@@ -792,10 +757,7 @@ public fun collect_fees_ok() {
     destroy(house);
 
     destroy(admin_cap);
-    destroy(referral);
-    destroy(referral_cap);
     destroy(participation);
-    burn_for_testing(coin1);
     burn_for_testing(coin2);
     scenario.end();
 }
@@ -808,57 +770,16 @@ public fun collect_fees_empty() {
     // Create a new house and balance manager
     let (mut house, admin_cap) = default_house(scenario.ctx());
     let tx_cap = house.tx_cap_for_testing(game_id);
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
-    let coin1 = house.referral_admin_claim_referral_fees(&referral_cap, scenario.ctx());
-    assert!(coin1.value() == 0);
-
     let coin2 = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
     assert!(coin2.value() == 0);
 
-    destroy(referral);
-    destroy(referral_cap);
     destroy(house);
 
     destroy(admin_cap);
-    burn_for_testing(coin1);
     burn_for_testing(coin2);
     scenario.end();
 }
 
-#[test]
-public fun collect_referral_fees_multiple_caps() {
-    let addr = @0xa;
-    let mut scenario = begin(addr);
-
-    // Create a new house and balance manager
-    let (mut house, admin_cap) = default_house(scenario.ctx());
-    let participation = fund_house_for_playing(&mut house, 100_000, scenario.ctx());
-
-    let (referral1, referral_cap1) = referral::new(house.id(), scenario.ctx());
-    let (referral2, referral_cap2) = referral::new(house.id(), scenario.ctx());
-
-    scenario.next_epoch(addr);
-
-    house.add_referral_fees_for_testing(&referral1, 100, scenario.ctx());
-
-    let coin1 = house.referral_admin_claim_referral_fees(&referral_cap1, scenario.ctx());
-    assert!(coin1.value() == 100);
-    let coin2 = house.referral_admin_claim_referral_fees(&referral_cap2, scenario.ctx());
-    assert!(coin2.value() == 0);
-
-    burn_for_testing(coin1);
-    burn_for_testing(coin2);
-
-    destroy(referral1);
-    destroy(referral_cap1);
-    destroy(referral2);
-    destroy(referral_cap2);
-    destroy(house);
-
-    destroy(admin_cap);
-    destroy(participation);
-    scenario.end();
-}
 
 #[test]
 public fun collect_game_fees_multiple_caps() {
@@ -914,7 +835,7 @@ public fun private_house_ok() {
 
     // Create a private house
     let openplay_admin_cap = registry::cap_for_testing(scenario.ctx());
-    let (house, admin_cap) = house::openplay_admin_new_house(&openplay_admin_cap, true, 100_000, 1_500, scenario.ctx());
+    let (house, admin_cap) = house::openplay_admin_new_house(&openplay_admin_cap, true, 100_000, scenario.ctx());
     let participation = house.admin_new_participation(&admin_cap, scenario.ctx());
 
     destroy(house);
@@ -935,7 +856,6 @@ public fun private_house_error() {
         &openplay_admin_cap,
         true,
         100_000,
-        1_500,
         scenario.ctx(),
     );
     let _participation = house.new_participation(scenario.ctx());
@@ -963,14 +883,13 @@ public fun process_transactions_wrong_cap() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
     abort 0
 }
 
 #[test]
-public fun process_transactions_no_referral() {
+public fun process_transactions_basic() {
     let addr = @0xa;
     let mut scenario = begin(addr);
     let game_id = object::id_from_address(addr);
@@ -995,7 +914,6 @@ public fun process_transactions_no_referral() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
 
@@ -1066,7 +984,6 @@ public fun process_transactions_different_game_fees() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
     let tx_cap = house.tx_cap_for_testing(game_id1);
@@ -1084,7 +1001,6 @@ public fun process_transactions_different_game_fees() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
     let tx_cap = house.tx_cap_for_testing(game_id2);
@@ -1108,63 +1024,6 @@ public fun process_transactions_different_game_fees() {
     scenario.end();
 }
 
-#[test]
-public fun process_transactions_with_referral() {
-    let addr = @0xa;
-    let mut scenario = begin(addr);
-    let game_id = object::id_from_address(addr);
-
-    // Create a new house and balance manager
-    let registry = registry_for_testing(scenario.ctx());
-    let (mut house, admin_cap) = default_house(scenario.ctx());
-    let participation = fund_house_for_playing(&mut house, 100_000, scenario.ctx());
-    scenario.next_epoch(addr);
-
-    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
-    // Deposit 50_000 on the balance manager
-    let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
-    balance_manager.deposit(&balance_manager_cap, deposit, scenario.ctx());
-    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, referral_cap) = referral::new(house.id(), scenario.ctx());
-
-    let tx_cap = house.tx_cap_for_testing(game_id);
-    let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
-    house.tx_admin_process_transactions_v2(
-        &registry,
-        &mut stats,
-        tx_cap,
-        &mut balance_manager,
-        &vector[bet(10_000), win(5_000)],
-        &play_cap,
-        some(referral.id()),
-        scenario.ctx(),
-    );
-
-    let expected_game_fee = int_mul(10_000, house.game_fee_factor(&game_id));
-    let expected_referral_fee = int_mul(10_000, house.referral_fee_factor());
-
-    let tx_cap = house.tx_cap_for_testing(object::id_from_address(addr));
-    let game_fee_coin = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
-    let referral_fee_coin = house.referral_admin_claim_referral_fees(&referral_cap, scenario.ctx());
-
-    assert!(game_fee_coin.value() == expected_game_fee);
-    assert!(referral_fee_coin.value() == expected_referral_fee);
-
-    destroy(house);
-    destroy(registry);
-    destroy(admin_cap);
-
-    destroy(balance_manager);
-    destroy(balance_manager_cap);
-    destroy(play_cap);
-    destroy(game_fee_coin);
-    destroy(referral_fee_coin);
-    destroy(participation);
-    destroy(referral);
-    destroy(referral_cap);
-    destroy(stats);
-    scenario.end();
-}
 
 #[test]
 public fun process_transactions_no_bm() {
@@ -1192,7 +1051,6 @@ public fun process_transactions_no_bm() {
         tx_cap,
         &vector[bet(10_000), win(5_000)],
         funds,
-        none(),
         scenario.ctx(),
     );
 
@@ -1242,7 +1100,6 @@ public fun process_transactions_no_bm_insufficient_balance() {
         tx_cap,
         &vector[bet(10_000), win(11_000)],
         funds,
-        none(),
         scenario.ctx(),
     );
 
@@ -1280,7 +1137,7 @@ public fun tx_cap_revoked() {
 }
 
 #[test, expected_failure(abort_code = registry::EPackageVersionDisabled)]
-public fun house_version_disabled_referral() {
+public fun house_version_disabled_after_rename() {
     let addr = @0xa;
     let game_id = object::id_from_address(addr);
     let mut scenario = begin(addr);
@@ -1292,7 +1149,6 @@ public fun house_version_disabled_referral() {
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-    let (referral, _referral_cap) = referral::new(house.id(), scenario.ctx());
 
     // Deposit 50_000 on the balance manager
     let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -1324,7 +1180,6 @@ public fun house_version_disabled_referral() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        some(referral.id()),
         scenario.ctx(),
     );
     abort 0
@@ -1374,7 +1229,6 @@ public fun house_version_disabled() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
     abort 0
@@ -1402,7 +1256,6 @@ public fun process_transactions_invalid_stats() {
         &mut balance_manager,
         &vector[bet(10_000), win(5_000)],
         &play_cap,
-        none(),
         scenario.ctx(),
     );
     abort 0

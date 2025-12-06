@@ -2,7 +2,6 @@
 module openplay_core::vault_tests;
 
 use openplay_core::balance_manager;
-use openplay_core::referral;
 use openplay_core::vault;
 use sui::coin::mint_for_testing;
 use sui::sui::SUI;
@@ -170,21 +169,15 @@ public fun process_fees_ok() {
         let mut vault = vault::empty(scenario.ctx());
         vault.fund_play_balance_for_testing(100, scenario.ctx());
 
-        let (referral, referral_cap) = referral::new(object::id_from_address(@0xA), scenario.ctx());
-
-        // Process fees (both)
+        // Process fees
         vault.process_game_fee(game_id, 5);
-        vault.process_referral_fee(referral.id(), 6);
         vault.process_protocol_fee(7);
 
-        assert!(vault.play_balance() == 82);
-        assert!(vault.collected_referral_fees(referral.id()) == 6);
+        assert!(vault.play_balance() == 88);
         assert!(vault.collected_game_fees(game_id) == 5);
         assert!(vault.collected_protocol_fees() == 7);
 
         destroy(vault);
-        destroy(referral);
-        destroy(referral_cap);
     };
     scenario.end();
 }
@@ -223,25 +216,6 @@ public fun process_game_fees_fail() {
     }
 }
 
-#[test, expected_failure(abort_code = vault::EInsufficientFunds)]
-public fun process_referral_fees_fail() {
-    let addr = @0xA;
-    let mut scenario = begin(addr);
-    {
-        // Create and fund vault with 100 MIST
-        let mut vault = vault::empty(scenario.ctx());
-        vault.fund_play_balance_for_testing(100, scenario.ctx());
-        let (referral, _referral_cap) = referral::new(
-            object::id_from_address(@0xA),
-            scenario.ctx(),
-        );
-
-        // Process fees
-        vault.process_referral_fee(referral.id(), 101);
-        destroy(vault);
-        abort 0
-    }
-}
 
 #[test]
 public fun end_of_day_ok() {

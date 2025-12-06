@@ -23,7 +23,6 @@ OpenPlay is a GambleFi protocol on Sui that provides infrastructure for house-ba
 **Current Fee Model:**
 - **Protocol fee**: Global fee (in Registry) going to OpenPlay protocol (set to 0% initially)
 - **Game fee**: Per-game instance fee going to... someone (currently unclear who owns it)
-- **Referral fee**: Optional fee passed per-transaction (house-level config, but optional per-tx)
 
 ### **Problems Identified**
 

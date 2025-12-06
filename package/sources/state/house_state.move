@@ -8,7 +8,6 @@ use openplay_core::calculations::actualize_amount;
 use openplay_core::core_constants::precision_error_allowance;
 use openplay_core::participation::Participation;
 use openplay_core::transaction::{Transaction, is_credit};
-use std::option::do;
 use std::uq32_32::{UQ32_32, from_quotient, int_mul};
 use sui::event::emit;
 use sui::table::{Self, Table};
@@ -167,9 +166,9 @@ public fun day_losses(eod: &EndOfDay): u64 {
 
 // == Public-Package Functions ==
 /// Process the transactions in the given state by updating the history and account.
-/// Returns a tuple (credit_balance, debit_balance, game_fee, protocol_fee, referral_fee).
+/// Returns a tuple (credit_balance, debit_balance, game_fee, protocol_fee).
 /// The first two values are the to_credit and to_debit balance by the balance manager.
-/// The last two values are the fees taken by the owner and protocol.
+/// The last two values are the fees taken by the game owner and protocol.
 /// These are calculated by the state because they might depend on state values (such as volumes).
 /// The Vault uses these values to perform any necessary transfers.
 public(package) fun process_transactions(
@@ -178,9 +177,8 @@ public(package) fun process_transactions(
     balance_manager_id: ID,
     game_fee_factor: UQ32_32,
     protocol_fee_factor: UQ32_32,
-    referral_fee_factor: Option<UQ32_32>,
     ctx: &TxContext,
-): (u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64) {
     self.assert_active();
     self.assert_epoch_up_to_date(ctx);
     self.update_account(balance_manager_id);
@@ -194,16 +192,11 @@ public(package) fun process_transactions(
     // Calculate fees
     let game_fee = calculate_fee(transactions, game_fee_factor);
     let protocol_fee = calculate_fee(transactions, protocol_fee_factor);
-    // If a referral_fee_factor is provided, we calculate the referral_fee
-    let mut referral_fee = 0;
-    referral_fee_factor.do!(
-        |referral_fee_factor| referral_fee = calculate_fee(transactions, referral_fee_factor),
-    );
 
     // Settle account balance
     let (credit_balance, debit_balance) = self.accounts[balance_manager_id].settle();
 
-    (credit_balance, debit_balance, game_fee, protocol_fee, referral_fee)
+    (credit_balance, debit_balance, game_fee, protocol_fee)
 }
 
 /// Processes a stake transaction in the game.

@@ -12,7 +12,6 @@ use sui::event::emit;
 
 // === Errors ===
 const EInsufficientFunds: u64 = 1;
-const EReferralDoesNotExist: u64 = 3;
 const EGameDoesNotExist: u64 = 4;
 
 // === Structs ===
@@ -21,7 +20,6 @@ const EGameDoesNotExist: u64 = 4;
 public struct Vault has store {
     epoch: u64,
     collected_protocol_fees: Balance<SUI>,
-    collected_referral_fees: VecMap<ID, Balance<SUI>>,
     collected_game_fees: VecMap<ID, Balance<SUI>>,
     play_balance: Balance<SUI>,
     reserve_balance: Balance<SUI>,
@@ -48,13 +46,6 @@ public fun reserve_balance(self: &Vault): u64 {
     self.reserve_balance.value()
 }
 
-/// Returns the collected referral fees for a specific referral ID.
-/// Aborts if the referral doesn't exist.
-public fun collected_referral_fees(self: &Vault, referral_id: ID): u64 {
-    assert!(self.collected_referral_fees.contains(&referral_id), EReferralDoesNotExist);
-    self.collected_referral_fees[&referral_id].value()
-}
-
 /// Returns the collected game fees for a specific game ID.
 /// Aborts if the game doesn't exist.
 public fun collected_game_fees(self: &Vault, game_id: ID): u64 {
@@ -78,7 +69,6 @@ public fun epoch(self: &Vault): u64 {
 public(package) fun empty(ctx: &TxContext): Vault {
     Vault {
         epoch: ctx.epoch(),
-        collected_referral_fees: vec_map::empty(),
         collected_protocol_fees: balance::zero(),
         collected_game_fees: vec_map::empty(),
         play_balance: balance::zero(),
@@ -132,13 +122,6 @@ public(package) fun deposit(self: &mut Vault, stake: Balance<SUI>) {
 /// Withdraws the specified amount from the reserve balance.
 public(package) fun withdraw(self: &mut Vault, amount: u64): Balance<SUI> {
     self.reserve_balance.split(amount)
-}
-
-public(package) fun withdraw_referral_fees(self: &mut Vault, referral_id: ID): Balance<SUI> {
-    self.ensure_referral_fee_balance(referral_id);
-
-    let balance = &mut self.collected_referral_fees[&referral_id];
-    balance.withdraw_all()
 }
 
 public(package) fun withdraw_game_fees(self: &mut Vault, game_id: ID): Balance<SUI> {
@@ -207,27 +190,7 @@ public(package) fun process_game_fee(self: &mut Vault, game_id: ID, game_fee: u6
     };
 }
 
-/// Processes and collects a referral fee from the play balance for a specific referral.
-/// Aborts if there are insufficient funds.
-public(package) fun process_referral_fee(self: &mut Vault, referral_id: ID, referral_fee: u64) {
-    assert!(self.play_balance.value() >= referral_fee, EInsufficientFunds);
-    if (referral_fee > 0) {
-        self.ensure_referral_fee_balance(referral_id);
-        let balance = self.play_balance.split(referral_fee);
-        let referral_balance = &mut self.collected_referral_fees[&referral_id];
-        referral_balance.join(balance);
-    };
-}
-
 // === Private Functions ===
-/// Ensures a referral fee balance exists for the given referral ID.
-/// Creates a zero balance if it doesn't exist.
-fun ensure_referral_fee_balance(self: &mut Vault, referral_id: ID) {
-    if (!self.collected_referral_fees.contains(&referral_id)) {
-        self.collected_referral_fees.insert(referral_id, balance::zero());
-    };
-}
-
 /// Ensures a game fee balance exists for the given game ID.
 /// Creates a zero balance if it doesn't exist.
 fun ensure_game_fee_balance(self: &mut Vault, game_id: ID) {
@@ -259,18 +222,6 @@ public fun fund_reserve_balance_for_testing(self: &mut Vault, amount: u64, ctx: 
 public fun burn_reserve_balance_for_testing(self: &mut Vault, amount: u64, ctx: &mut TxContext) {
     let balance = self.reserve_balance.split(amount);
     balance.into_coin(ctx).burn_for_testing();
-}
-
-#[test_only]
-public fun fund_referral_fees_for_testing(
-    self: &mut Vault,
-    referral_id: ID,
-    amount: u64,
-    ctx: &mut TxContext,
-) {
-    let balance = sui::coin::mint_for_testing(amount, ctx).into_balance();
-    let ref_balance = &mut self.collected_referral_fees[&referral_id];
-    ref_balance.join(balance);
 }
 
 #[test_only]

@@ -1,5 +1,5 @@
 /// House is responsible for processing and settling transactions between the vault and balance manager.
-/// It is responsible for keeping the right amount of fees for stakers, game owners, and referrals.
+/// It is responsible for keeping the right amount of fees for stakers and game owners.
 module openplay_core::house;
 
 use openplay_core::balance_manager::{Self, BalanceManager, PlayCap};
@@ -7,11 +7,9 @@ use openplay_core::core_constants::max_bps;
 use openplay_core::game_stats::GameStatistics;
 use openplay_core::house_state::{Self, State};
 use openplay_core::participation::{Self, Participation};
-use openplay_core::referral::{Self, ReferralCap, referral_id};
 use openplay_core::registry::{Registry, OpenPlayAdminCap};
 use openplay_core::transaction::Transaction;
 use openplay_core::vault::{Self, Vault};
-use std::option::{some, none};
 use std::uq32_32::{UQ32_32, from_quotient};
 use sui::coin::Coin;
 use sui::event::emit;
@@ -25,7 +23,6 @@ const EInsufficientFunds: u64 = 1;
 const EInvalidTxCap: u64 = 2;
 const EInvalidParticipation: u64 = 3;
 const EHouseNotActive: u64 = 4;
-const EReferralNotEnabled: u64 = 5;
 const EHouseIsPrivate: u64 = 6;
 const EMaxTxCapsReached: u64 = 7;
 const EInvalidAdminCap: u64 = 9;
@@ -49,7 +46,6 @@ public struct House has key {
     private: bool, // Staking becomes an admin-only function
     min_activation_balance: u64,
     games_fee_bps: VecMap<ID, u64>,
-    referral_fee_bps: u64,
     tx_allow_listed: VecSet<ID>,
     // Internal props
     vault: Vault,
@@ -70,11 +66,10 @@ public struct HouseTransactionCap {
     game_id: ID,
 }
 
-/// Fee breakdown structure containing protocol, game, and referral fees.
+/// Fee breakdown structure containing protocol and game fees.
 public struct Fees has copy, drop {
     protocol_fee: u64,
     game_fee: u64,
-    referral_fee: u64,
 }
 
 /// Event emitted when a new House is created.
@@ -95,7 +90,6 @@ public struct TransactionsProcessedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
     balance_manager_id: ID,
-    referral_id: Option<ID>,
     transactions: vector<Transaction>,
     fees: Fees,
 }
@@ -115,13 +109,6 @@ public struct GameTransactionsRevokedEvent has copy, drop {
 /// Event emitted when protocol fees are claimed by the OpenPlay admin.
 public struct ProtocolFeesClaimedEvent has copy, drop {
     house_id: ID,
-    amount: u64,
-}
-
-/// Event emitted when referral fees are claimed by a referral owner.
-public struct ReferralFeesClaimedEvent has copy, drop {
-    house_id: ID,
-    referral_id: ID,
     amount: u64,
 }
 
@@ -155,11 +142,6 @@ public fun play_balance(self: &mut House, ctx: &mut TxContext): u64 {
 public fun reserve_balance(self: &mut House, ctx: &mut TxContext): u64 {
     self.process_end_of_day(ctx);
     self.vault.reserve_balance()
-}
-
-/// Returns the referral fee factor as a UQ32_32 fixed-point number.
-public fun referral_fee_factor(self: &House): UQ32_32 {
-    from_quotient(self.referral_fee_bps, 10000)
 }
 
 /// Returns the game fee factor for a specific game as a UQ32_32 fixed-point number.
@@ -293,15 +275,6 @@ public fun claim_all(
     self.vault.withdraw(claimable).into_coin(ctx)
 }
 
-/// Creates a new referral for this House and returns the ReferralCap.
-/// Can only be called if referral fees are enabled.
-public fun new_referral(self: &House, ctx: &mut TxContext): ReferralCap {
-    self.assert_referral_active();
-    let (referral, referral_cap) = referral::new(self.id(), ctx);
-    referral::share(referral);
-    referral_cap
-}
-
 /// Borrows a transaction cap for a game that is authorized in the allow list.
 /// Aborts if the game is not authorized.
 public fun borrow_tx_cap(self: &House, game_id: &mut UID): HouseTransactionCap {
@@ -324,7 +297,6 @@ public fun tx_admin_process_transactions_v2(
     balance_manager: &mut BalanceManager,
     transactions: &vector<Transaction>,
     play_cap: &PlayCap,
-    referral_id: Option<ID>,
     ctx: &TxContext,
 ) {
     // Check the stats
@@ -337,29 +309,19 @@ public fun tx_admin_process_transactions_v2(
     // Generate proof
     let play_proof = balance_manager.generate_proof_as_player(play_cap, ctx);
 
-    // Ensure referral is active if provided
-    let referral_fee_factor;
-    if (referral_id.is_some()) {
-        self.assert_referral_active();
-        referral_fee_factor = some(self.referral_fee_factor());
-    } else {
-        referral_fee_factor = none();
-    };
-
     let game_fee_factor = self.game_fee_factor(&game_id);
     let protocol_fee_factor = registry.protocol_fee_factor();
 
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
 
-    let (credit_balance, debit_balance, game_fee, protocol_fee, referral_fee) = self
+    let (credit_balance, debit_balance, game_fee, protocol_fee) = self
         .state
         .process_transactions(
             transactions,
             balance_manager.id(),
             game_fee_factor,
             protocol_fee_factor,
-            referral_fee_factor,
             ctx,
         );
 
@@ -369,9 +331,6 @@ public fun tx_admin_process_transactions_v2(
     // Process fees
     self.vault.process_game_fee(game_id, game_fee);
     self.vault.process_protocol_fee(protocol_fee);
-    if (referral_id.is_some()) {
-        self.vault.process_referral_fee(*referral_id.borrow(), referral_fee);
-    };
 
     // Update stats
     game_stats.process_transactions(transactions, ctx);
@@ -381,12 +340,10 @@ public fun tx_admin_process_transactions_v2(
         house_id: self.id(),
         game_id: game_id,
         balance_manager_id: balance_manager.id(),
-        referral_id: referral_id,
         transactions: *transactions,
         fees: Fees {
             protocol_fee: protocol_fee,
             game_fee: game_fee,
-            referral_fee: 0,
         },
     })
 }
@@ -401,7 +358,6 @@ public fun tx_admin_process_transactions_v2_no_bm(
     cap: HouseTransactionCap,
     transactions: &vector<Transaction>,
     funds: Coin<SUI>,
-    referral_id: Option<ID>,
     ctx: &mut TxContext,
 ): Coin<SUI> {
     let game_id = cap.game_id;
@@ -417,29 +373,19 @@ public fun tx_admin_process_transactions_v2_no_bm(
     // Generate proof
     let play_proof = balance_manager.generate_proof_as_owner(&bm_cap, ctx);
 
-    // Ensure referral is active if provided
-    let referral_fee_factor;
-    if (referral_id.is_some()) {
-        self.assert_referral_active();
-        referral_fee_factor = some(self.referral_fee_factor());
-    } else {
-        referral_fee_factor = none();
-    };
-
     let game_fee_factor = self.game_fee_factor(&game_id);
     let protocol_fee_factor = registry.protocol_fee_factor();
 
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
 
-    let (credit_balance, debit_balance, game_fee, protocol_fee, referral_fee) = self
+    let (credit_balance, debit_balance, game_fee, protocol_fee) = self
         .state
         .process_transactions(
             transactions,
             balance_manager.id(),
             game_fee_factor,
             protocol_fee_factor,
-            referral_fee_factor,
             ctx,
         );
 
@@ -451,9 +397,6 @@ public fun tx_admin_process_transactions_v2_no_bm(
     // Process fees
     self.vault.process_game_fee(game_id, game_fee);
     self.vault.process_protocol_fee(protocol_fee);
-    if (referral_id.is_some()) {
-        self.vault.process_referral_fee(*referral_id.borrow(), referral_fee);
-    };
 
     // Update stats
     game_stats.process_transactions(transactions, ctx);
@@ -463,12 +406,10 @@ public fun tx_admin_process_transactions_v2_no_bm(
         house_id: self.id(),
         game_id: game_id,
         balance_manager_id: balance_manager.id(),
-        referral_id: referral_id,
         transactions: *transactions,
         fees: Fees {
             protocol_fee: protocol_fee,
             game_fee: game_fee,
-            referral_fee: 0,
         },
     });
 
@@ -479,7 +420,7 @@ public fun tx_admin_process_transactions_v2_no_bm(
     remainder
 }
 
-// === Referral-Admin Functions ===
+// === Tx-Admin Functions ===
 /// Claims all the game fees for a specific game. Can only be called by the game owner using a transaction cap.
 public fun tx_admin_claim_game_fees(
     self: &mut House,
@@ -569,25 +510,6 @@ public fun admin_set_game_fee(
     })
 }
 
-// === Referral-Admin Functions ===
-/// Claims all the referral fees for this house. Can only be called by the referral owner.
-public fun referral_admin_claim_referral_fees(
-    self: &mut House,
-    referral_cap: &ReferralCap,
-    ctx: &mut TxContext,
-): Coin<SUI> {
-    let fee_coin = self.vault.withdraw_referral_fees(referral_cap.referral_id()).into_coin(ctx);
-
-    // Event
-    emit(ReferralFeesClaimedEvent {
-        house_id: self.id(),
-        referral_id: referral_cap.referral_id(),
-        amount: fee_coin.value(),
-    });
-
-    fee_coin
-}
-
 // === Openplay admin functions ===
 /// Creates a new House with the specified configuration.
 /// Returns (house, admin_cap) where admin_cap grants administrative access.
@@ -595,10 +517,8 @@ public fun openplay_admin_new_house(
     _openplay_admin_cap: &OpenPlayAdminCap,
     private: bool,
     min_activation_balance: u64,
-    referral_fee_bps: u64,
     ctx: &mut TxContext,
 ): (House, HouseAdminCap) {
-    assert!(referral_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let admin_cap_id = object::new(ctx);
     let house = House {
         id: object::new(ctx),
@@ -608,7 +528,6 @@ public fun openplay_admin_new_house(
         state: house_state::new(ctx),
         min_activation_balance,
         games_fee_bps: vec_map::empty(),
-        referral_fee_bps,
         tx_allow_listed: vec_set::empty(),
     };
     let admin_cap = HouseAdminCap {
@@ -702,12 +621,6 @@ fun assert_not_private(self: &House) {
     assert!(self.private() == false, EHouseIsPrivate);
 }
 
-/// Asserts that referral fees are enabled for this House.
-/// Aborts if referral_fee_bps is zero.
-fun assert_referral_active(self: &House) {
-    assert!(self.referral_fee_bps > 0, EReferralNotEnabled);
-}
-
 /// Attempts to activate the House if there is sufficient stake.
 /// Funds the play balance if activation succeeds.
 fun activate_if_possible(self: &mut House, ctx: &TxContext) {
@@ -745,10 +658,8 @@ public fun tx_cap_for_testing(house: &mut House, game_id: ID): HouseTransactionC
 public fun new_for_testing(
     private: bool,
     min_activation_balance: u64,
-    referral_fee_bps: u64,
     ctx: &mut TxContext,
 ): (House, HouseAdminCap) {
-    assert!(referral_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let admin_cap_id = object::new(ctx);
     let house = House {
         id: object::new(ctx),
@@ -758,7 +669,6 @@ public fun new_for_testing(
         state: house_state::new(ctx),
         min_activation_balance,
         games_fee_bps: vec_map::empty(),
-        referral_fee_bps,
         tx_allow_listed: vec_set::empty(),
     };
     let admin_cap = HouseAdminCap {
@@ -775,20 +685,6 @@ public fun new_for_testing(
 }
 
 #[test_only]
-use openplay_core::referral::Referral;
-
-#[test_only]
-public fun add_referral_fees_for_testing(
-    self: &mut House,
-    referral: &Referral,
-    referral_fee: u64,
-    ctx: &TxContext,
-) {
-    self.process_end_of_day(ctx);
-    self.vault.process_referral_fee(referral.id(), referral_fee);
-}
-
-#[test_only]
 public fun add_game_fees_for_testing(
     self: &mut House,
     game_id: ID,
@@ -797,9 +693,4 @@ public fun add_game_fees_for_testing(
 ) {
     self.process_end_of_day(ctx);
     self.vault.process_game_fee(game_id, game_fee);
-}
-
-#[test_only]
-public fun referral_for_testing(self: &House, ctx: &mut TxContext): (Referral, ReferralCap) {
-    referral::new(self.id(), ctx)
 }

@@ -56,7 +56,6 @@ public fun default_house(ctx: &mut TxContext): (House, HouseAdminCap) {
     let (mut house, house_admin) = house::new_for_testing(
         false,
         100_000,
-        99,
         ctx,
     );
     let game_id = object::id_from_address(@0xA);

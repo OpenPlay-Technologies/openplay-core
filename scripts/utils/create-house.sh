@@ -27,20 +27,17 @@ show_parameter_sets() {
     for set_num in 1 2 3 4; do
         get_parameter_set "$set_num" >/dev/null 2>&1
 
-        local min_activation_sui referral_fee_percent
+        local min_activation_sui
         if command -v bc >/dev/null 2>&1; then
             min_activation_sui=$(echo "scale=2; $MIN_ACTIVATION_BALANCE/1000000000" | bc)
-            referral_fee_percent=$(echo "scale=2; $REFERRAL_FEE_BPS/100" | bc)
         else
             min_activation_sui="$MIN_ACTIVATION_BALANCE (raw)"
-            referral_fee_percent="N/A"
         fi
 
         echo "------------------------------------------------------------"
         echo "Parameter Set $set_num: $HOUSE_TYPE"
         echo "    Private              : $PRIVATE"
         echo "    Min Activation       : $min_activation_sui SUI"
-        echo "    Referral Fee         : ${referral_fee_percent}% ($REFERRAL_FEE_BPS bps)"
         echo "------------------------------------------------------------"
         echo ""
     done
@@ -54,26 +51,22 @@ get_parameter_set() {
         1)
             PRIVATE=false
             MIN_ACTIVATION_BALANCE=10000000000
-            REFERRAL_FEE_BPS=500
             HOUSE_TYPE="PUBLIC_STANDARD"
             ;;
         2)
             PRIVATE=false
             MIN_ACTIVATION_BALANCE=50000000000
-            REFERRAL_FEE_BPS=1000
             HOUSE_TYPE="PUBLIC_PREMIUM"
             ;;
         3)
             PRIVATE=true
             MIN_ACTIVATION_BALANCE=10000000000
-            REFERRAL_FEE_BPS=500
             HOUSE_TYPE="PRIVATE_STANDARD"
             ;;
         4)
             PRIVATE=true
             MIN_ACTIVATION_BALANCE=1000000000
-            REFERRAL_FEE_BPS=0
-            HOUSE_TYPE="PRIVATE_STANDARD_NO_REFERRAL"
+            HOUSE_TYPE="PRIVATE_STANDARD_SMALL"
             ;;
         *)
             print_error "Invalid parameter set: $set_num"
@@ -162,15 +155,14 @@ ADMIN_CAP_ID="$OPENPLAY_CORE_ADMIN_CAP"
 get_parameter_set "$PARAM_SET"
 
 print_status "Creating house with parameter set $PARAM_SET ($HOUSE_TYPE)"
-print_status "Parameters: Private=$PRIVATE, Min Activation=$MIN_ACTIVATION_BALANCE, Referral Fee=${REFERRAL_FEE_BPS}bps"
+print_status "Parameters: Private=$PRIVATE, Min Activation=$MIN_ACTIVATION_BALANCE"
 print_status "Recipient: $RECIPIENT_ADDRESS"
 
 # Create the house
 print_status "Creating house instance..."
 HOUSE_OUTPUT=$(sui client ptb \
     --assign min_activation_balance $MIN_ACTIVATION_BALANCE \
-    --assign referral_fee_bps $REFERRAL_FEE_BPS \
-    --move-call $CORE_PACKAGE_ID::house::openplay_admin_new_house @$ADMIN_CAP_ID $PRIVATE min_activation_balance referral_fee_bps \
+    --move-call $CORE_PACKAGE_ID::house::openplay_admin_new_house @$ADMIN_CAP_ID $PRIVATE min_activation_balance \
     --assign createHouseOutput \
     --move-call $CORE_PACKAGE_ID::house::share @$REGISTRY_ID createHouseOutput.0 \
     --transfer-objects [createHouseOutput.1] @$RECIPIENT_ADDRESS \
@@ -214,7 +206,6 @@ echo "  House Admin Cap ID: $HOUSE_ADMIN_CAP_ID"
 echo "  Parameter Set: $PARAM_SET ($HOUSE_TYPE)"
 echo "  Private: $PRIVATE"
 echo "  Min Activation Balance: $MIN_ACTIVATION_BALANCE"
-echo "  Referral Fee: ${REFERRAL_FEE_BPS} bps"
 echo "  Admin Cap Recipient: $RECIPIENT_ADDRESS"
 echo ""
 
