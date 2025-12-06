@@ -307,9 +307,9 @@ Happens automatically when new epoch starts:
    - If eod_balance > active_stake: profits = difference
    - If eod_balance < active_stake: losses = difference
 
-3. Take house admin fee:
-   - Admin fee = profits * admin_fee_bps / 10000
-   - Transfer to house admin address
+3. Take house performance fee (✅ IMPLEMENTED in v2.1):
+   - House fee = profits * house_fee_bps / 10000
+   - House fee is collected in vault (can be claimed by house admin)
    - Remaining profits go to stakers
 
 4. State processes end of day:
@@ -333,10 +333,11 @@ Happens automatically when new epoch starts:
 ### **What to Add**
 
 
-1. **House admin fee mechanism:**
-   - Add `admin_fee_bps` to House config
-   - At epoch end: take admin fee before distributing to stakers
-   - Transfer admin fee to house admin (or accumulate in vault)
+1. **House admin fee mechanism:** ✅ COMPLETED (v2.1)
+   - ✅ Added `house_fee_bps` to House config (implemented as performance fee, default 20%)
+   - ✅ At epoch end: house fee is deducted from profits before distributing to stakers
+   - ✅ House fees accumulate in vault and can be claimed by house admin via `admin_claim_house_fees()`
+   - Note: Implemented as "house fee" or "performance fee" rather than "admin fee"
 
 2. **Package developer fee tracking:**
    - Vault tracks: `collected_package_dev_fees` by address

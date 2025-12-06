@@ -23,16 +23,17 @@
 2. **House** (`house.move`)
    - Shared objects that process bet/win transactions
    - Manages whitelisted games (transaction allow list)
-   - Handles fee distribution (protocol, game)
+   - Handles fee distribution (protocol, game, house performance fee)
    - Manages staking participation
    - Processes end-of-day calculations
+   - Calculates and collects house performance fee from profits
 
 3. **Vault** (`vault.move`)
    - Stores all house assets
    - Separates funds into:
      - **Play balance**: Active gameplay funds
      - **Reserve balance**: Staked funds not yet in play
-   - Tracks collected fees (protocol, game)
+   - Tracks collected fees (protocol, game, house performance fee)
 
 4. **Participation** (`participation.move`)
    - NFT-like objects representing user's stake in a house
@@ -66,7 +67,8 @@
 - Houses operate in epochs (~24 hours, Sui epochs)
 - At end of epoch:
   - Profits/losses are calculated
-  - Distributed proportionally to stakers
+  - House performance fee is deducted from profits (if any)
+  - Remaining profits distributed proportionally to stakers
   - Pending stakes/unstakes are processed
 
 ### House Activation
@@ -91,6 +93,10 @@ Uses Sui capabilities for access control:
 
 1. **Protocol Fee**: Global fee in Registry (currently 0%)
 2. **Game Fee**: Per-game instance fee (goes to game owners)
+3. **House Fee (Performance Fee)**: Percentage of profits taken by house admin (default 20% = 2000 bps)
+   - Calculated and deducted from profits at end of each epoch
+   - Collected in vault and can be claimed by house admin
+   - Remaining profits (after house fee) are distributed to stakers
 
 ## Vision & Future Plans
 
@@ -102,7 +108,7 @@ See `docs/vision.md` for detailed vision document. Key points:
 - Fee hierarchy: Protocol → Package Dev → Instance Creator → House Admin → Stakers
 
 ### Planned Changes
-- Add house admin fee mechanism
+- ✅ House admin fee mechanism (COMPLETED in v2.1 - implemented as house performance fee)
 - Package developer fee tracking (by address)
 - Instance creator fee tracking (by address)
 - Per-game fee configuration (package_dev_fee_bps, instance_creator_fee_bps)

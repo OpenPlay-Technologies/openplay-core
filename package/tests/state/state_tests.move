@@ -4,7 +4,6 @@ module openplay_core::house_state_tests;
 use openplay_core::balance_manager;
 use openplay_core::house_state;
 use openplay_core::transaction::{bet, win};
-use std::option::none;
 use std::uq32_32::{int_mul, from_quotient, add, from_int, sub};
 use sui::test_scenario::begin;
 use std::unit_test::destroy;

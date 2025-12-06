@@ -1,6 +1,6 @@
 /// The vault holds all of the assets of a house. At the end of all
 /// transaction processing, the vault is used to settle the balances for the account.
-/// The vault is also responsible for taking a fee when processing transactions
+/// The vault is also responsible for collecting fees (protocol, game, and house performance fees)
 module openplay_core::vault;
 
 use openplay_core::balance_manager::{BalanceManager, PlayProof};
@@ -21,6 +21,7 @@ public struct Vault has store {
     epoch: u64,
     collected_protocol_fees: Balance<SUI>,
     collected_game_fees: VecMap<ID, Balance<SUI>>,
+    collected_house_fees: Balance<SUI>,
     play_balance: Balance<SUI>,
     reserve_balance: Balance<SUI>,
 }
@@ -71,6 +72,7 @@ public(package) fun empty(ctx: &TxContext): Vault {
         epoch: ctx.epoch(),
         collected_protocol_fees: balance::zero(),
         collected_game_fees: vec_map::empty(),
+        collected_house_fees: balance::zero(),
         play_balance: balance::zero(),
         reserve_balance: balance::zero(),
     }
@@ -133,6 +135,23 @@ public(package) fun withdraw_game_fees(self: &mut Vault, game_id: ID): Balance<S
 
 public(package) fun withdraw_protocol_fees(self: &mut Vault): Balance<SUI> {
     self.collected_protocol_fees.withdraw_all()
+}
+
+/// Withdraws all collected house fees from the vault.
+public(package) fun withdraw_house_fees(self: &mut Vault): Balance<SUI> {
+    self.collected_house_fees.withdraw_all()
+}
+
+/// Processes and collects house fees (performance fee) from profits.
+/// This should be called during end-of-day processing when there are profits.
+/// House fees are deducted from the reserve balance where profits are stored after end-of-day.
+public(package) fun process_house_fee(self: &mut Vault, house_fee: u64) {
+    if (house_fee > 0) {
+        assert!(self.reserve_balance.value() >= house_fee, EInsufficientFunds);
+        // House fees are collected from the reserve balance (where profits are stored)
+        let balance = self.reserve_balance.split(house_fee);
+        self.collected_house_fees.join(balance);
+    };
 }
 
 /// Settles the balances between the `vault` and `balance_manager`.

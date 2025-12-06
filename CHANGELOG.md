@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Project context documentation for future development sessions (`.cursor/project-context.md`)
 - CHANGELOG.md file to track all changes going forward
+- House fee (performance fee) system that takes a percentage of profits from each epoch
+  - Added `house_fee_bps` field to House struct (default 20% = 2000 bps)
+  - Added `collected_house_fees` balance to Vault
+  - Added `admin_claim_house_fees()` function for house admin to claim collected fees
+  - Added `house_fee_factor()` and `house_fee_bps()` getter functions
+  - House fee is calculated and deducted from profits during end-of-day processing
+  - Remaining profits (after house fee) are distributed to stakers
+  - Added test case for claiming house fees
 
 ### Changed
 

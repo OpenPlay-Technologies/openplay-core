@@ -162,7 +162,7 @@ print_status "Recipient: $RECIPIENT_ADDRESS"
 print_status "Creating house instance..."
 HOUSE_OUTPUT=$(sui client ptb \
     --assign min_activation_balance $MIN_ACTIVATION_BALANCE \
-    --move-call $CORE_PACKAGE_ID::house::openplay_admin_new_house @$ADMIN_CAP_ID $PRIVATE min_activation_balance \
+    --move-call $CORE_PACKAGE_ID::house::openplay_admin_new_house @$ADMIN_CAP_ID $PRIVATE min_activation_balance 2000 \
     --assign createHouseOutput \
     --move-call $CORE_PACKAGE_ID::house::share @$REGISTRY_ID createHouseOutput.0 \
     --transfer-objects [createHouseOutput.1] @$RECIPIENT_ADDRESS \
@@ -206,6 +206,7 @@ echo "  House Admin Cap ID: $HOUSE_ADMIN_CAP_ID"
 echo "  Parameter Set: $PARAM_SET ($HOUSE_TYPE)"
 echo "  Private: $PRIVATE"
 echo "  Min Activation Balance: $MIN_ACTIVATION_BALANCE"
+echo "  House Performance Fee: 20% (2000 bps)"
 echo "  Admin Cap Recipient: $RECIPIENT_ADDRESS"
 echo ""
 

@@ -1,5 +1,5 @@
 /// House is responsible for processing and settling transactions between the vault and balance manager.
-/// It is responsible for keeping the right amount of fees for stakers and game owners.
+/// It is responsible for keeping the right amount of fees for stakers, game owners, and house admin (performance fee).
 module openplay_core::house;
 
 use openplay_core::balance_manager::{Self, BalanceManager, PlayCap};
@@ -10,7 +10,7 @@ use openplay_core::participation::{Self, Participation};
 use openplay_core::registry::{Registry, OpenPlayAdminCap};
 use openplay_core::transaction::Transaction;
 use openplay_core::vault::{Self, Vault};
-use std::uq32_32::{UQ32_32, from_quotient};
+use std::uq32_32::{UQ32_32, from_quotient, int_mul};
 use sui::coin::Coin;
 use sui::event::emit;
 use sui::sui::SUI;
@@ -45,6 +45,7 @@ public struct House has key {
     admin_cap_id: ID,
     private: bool, // Staking becomes an admin-only function
     min_activation_balance: u64,
+    house_fee_bps: u64, // Performance fee taken from profits (in basis points)
     games_fee_bps: VecMap<ID, u64>,
     tx_allow_listed: VecSet<ID>,
     // Internal props
@@ -119,6 +120,12 @@ public struct GameFeesClaimedEvent has copy, drop {
     amount: u64,
 }
 
+/// Event emitted when house fees (performance fees) are claimed by the house admin.
+public struct HouseFeesClaimedEvent has copy, drop {
+    house_id: ID,
+    amount: u64,
+}
+
 // === Public-View Functions ===
 /// Returns the ID of the House.
 public fun id(self: &House): ID {
@@ -148,7 +155,15 @@ public fun reserve_balance(self: &mut House, ctx: &mut TxContext): u64 {
 /// Returns 0 if the game has no configured fee.
 public fun game_fee_factor(self: &House, game_id: &ID): UQ32_32 {
     let game_fee_bps = self.games_fee_bps.try_get(game_id).get_with_default(0);
-    from_quotient(game_fee_bps, 10000)
+    from_quotient(game_fee_bps, max_bps())
+}
+
+public fun house_fee_factor(self: &House): UQ32_32 {
+    from_quotient(self.house_fee_bps, max_bps())
+}
+
+public fun house_fee_bps(self: &House): u64 {
+    self.house_fee_bps
 }
 
 /// Returns the House ID associated with an admin cap.
@@ -444,6 +459,27 @@ public fun tx_admin_claim_game_fees(
 }
 
 // === House-Admin Functions ===
+/// Claims all the house fees (performance fees) collected from profits.
+/// Can only be called by the house admin.
+public fun admin_claim_house_fees(
+    self: &mut House,
+    admin_cap: &HouseAdminCap,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    self.assert_valid_admin_cap(admin_cap);
+    
+    let fee_coin = self.vault.withdraw_house_fees().into_coin(ctx);
+    
+    // Event
+    emit(HouseFeesClaimedEvent {
+        house_id: self.id(),
+        amount: fee_coin.value(),
+    });
+    
+    fee_coin
+}
+
+// === House-Admin Functions ===
 /// Privileged instruction for creating a new participation. Should be used when the house is `private`.
 public fun admin_new_participation(
     self: &House,
@@ -517,8 +553,10 @@ public fun openplay_admin_new_house(
     _openplay_admin_cap: &OpenPlayAdminCap,
     private: bool,
     min_activation_balance: u64,
+    house_fee_bps: u64,
     ctx: &mut TxContext,
 ): (House, HouseAdminCap) {
+    assert!(house_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let admin_cap_id = object::new(ctx);
     let house = House {
         id: object::new(ctx),
@@ -527,6 +565,7 @@ public fun openplay_admin_new_house(
         vault: vault::empty(ctx),
         state: house_state::new(ctx),
         min_activation_balance,
+        house_fee_bps,
         games_fee_bps: vec_map::empty(),
         tx_allow_listed: vec_set::empty(),
     };
@@ -562,7 +601,8 @@ public fun openplay_admin_claim_protocol_fees(
 
 // == Private Functions ==
 /// Processes end-of-day when a new epoch is detected.
-/// Calculates profits/losses, updates participation state, and attempts to reactivate the house if possible.
+/// Calculates profits/losses, deducts house performance fee from profits (if any),
+/// updates participation state, and attempts to reactivate the house if possible.
 /// The first time this gets called on a new epoch, the end of the day procedure is initiated for the last known epoch.
 /// The vault saves the end of day balance for the house and resets to the target balance if there are enough funds available.
 /// Note: there can be a number of epochs in between without any activity.
@@ -587,8 +627,27 @@ fun process_end_of_day(self: &mut House, ctx: &TxContext) {
             profits = 0;
             losses = 0;
         };
-        // Process the profits / losses with the state
-        self.state.process_end_of_day(prev_epoch, profits, losses, ctx);
+        
+        // Calculate and deduct house fee from profits (performance fee)
+        let house_fee = if (profits > 0) {
+            let house_fee_factor = self.house_fee_factor();
+            int_mul(profits, house_fee_factor)
+        } else {
+            0
+        };
+        let profits_after_house_fee = if (profits > house_fee) {
+            profits - house_fee
+        } else {
+            0
+        };
+        
+        // Store house fee in vault
+        if (house_fee > 0) {
+            self.vault.process_house_fee(house_fee);
+        };
+        
+        // Process the profits / losses with the state (after house fee deduction)
+        self.state.process_end_of_day(prev_epoch, profits_after_house_fee, losses, ctx);
 
         // Check if the house can be activated again (if there is still sufficient stake available)
         self.activate_if_possible(ctx);
@@ -658,8 +717,10 @@ public fun tx_cap_for_testing(house: &mut House, game_id: ID): HouseTransactionC
 public fun new_for_testing(
     private: bool,
     min_activation_balance: u64,
+    house_fee_bps: u64,
     ctx: &mut TxContext,
 ): (House, HouseAdminCap) {
+    assert!(house_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let admin_cap_id = object::new(ctx);
     let house = House {
         id: object::new(ctx),
@@ -668,6 +729,7 @@ public fun new_for_testing(
         vault: vault::empty(ctx),
         state: house_state::new(ctx),
         min_activation_balance,
+        house_fee_bps,
         games_fee_bps: vec_map::empty(),
         tx_allow_listed: vec_set::empty(),
     };
