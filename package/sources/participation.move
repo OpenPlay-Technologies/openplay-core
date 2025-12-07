@@ -59,6 +59,12 @@ public struct ParticipationEndOfDayProcessedEvent has copy, drop {
     losses: u64,
 }
 
+/// Event emitted when funds are claimed from a Participation.
+public struct ClaimProcessedEvent has copy, drop {
+    participation_id: ID,
+    amount: u64,
+}
+
 // === Public-View Functions ===
 public fun stake(self: &Participation): u64 {
     self.stake
@@ -383,5 +389,12 @@ public(package) fun claim_all(self: &mut Participation, ctx: &TxContext): u64 {
     assert!(self.last_updated_epoch == ctx.epoch(), EEpochMismatch);
     let claimable = self.claimable_balance;
     self.claimable_balance = 0;
+
+    // Event
+    emit(ClaimProcessedEvent {
+        participation_id: self.id(),
+        amount: claimable,
+    });
+
     claimable
 }

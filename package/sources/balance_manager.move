@@ -88,6 +88,12 @@ public struct PlayCapDestroyedEvent has copy, drop {
     play_cap_id: ID,
 }
 
+/// Event emitted when a BalanceManager is destroyed.
+public struct BalanceManagerDestroyedEvent has copy, drop {
+    balance_manager_id: ID,
+    balance_manager_cap_id: ID,
+}
+
 // === Public-View Functions ===
 /// Returns the id of the balance_manager.
 public fun id(self: &BalanceManager): ID {
@@ -323,12 +329,21 @@ public fun destroy_empty(self: BalanceManager, cap: BalanceManagerCap) {
     self.validate_owner(&cap);
     self.validate_balance_empty();
 
+    let balance_manager_id = self.id();
+    let cap_id = cap.id.to_inner();
+
     let BalanceManager { id, balance, tx_allow_listed: _, cap_id: _ } = self;
     balance.destroy_zero();
     object::delete(id);
 
     let BalanceManagerCap { id, balance_manager_id: _ } = cap;
     object::delete(id);
+
+    // Event
+    emit(BalanceManagerDestroyedEvent {
+        balance_manager_id,
+        balance_manager_cap_id: cap_id,
+    });
 }
 
 // === Public-Package Functions ===

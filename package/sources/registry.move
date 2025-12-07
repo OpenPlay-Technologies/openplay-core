@@ -3,6 +3,7 @@ module openplay_core::registry;
 
 use openplay_core::core_constants::current_version;
 use openplay_core::game_stats::{Self, GameStatistics};
+use sui::event::emit;
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
@@ -33,12 +34,44 @@ public struct OpenPlayAdminCap has key, store {
     id: UID,
 }
 
+/// Event emitted when protocol fee is updated.
+public struct ProtocolFeeUpdatedEvent has copy, drop {
+    old_fee_bps: u64,
+    new_fee_bps: u64,
+}
+
+/// Event emitted when a package version is allowed.
+public struct VersionAllowedEvent has copy, drop {
+    version: u64,
+}
+
+/// Event emitted when a package version is disallowed.
+public struct VersionDisallowedEvent has copy, drop {
+    version: u64,
+}
+
+/// Event emitted when GameStatistics are initialized for a game.
+public struct GameStatsInitializedEvent has copy, drop {
+    game_id: ID,
+    stats_id: ID,
+}
+
+/// Event emitted when a House is registered in the Registry.
+public struct HouseRegisteredEvent has copy, drop {
+    house_id: ID,
+}
+
 // === Public-Package Functions ===
 /// Registers a new House in the Registry.
 /// Validates that the current package version is allowed.
 public(package) fun register_house(self: &mut Registry, house_id: ID) {
     self.assert_version();
     self.houses.push_back(house_id);
+
+    // Event
+    emit(HouseRegisteredEvent {
+        house_id,
+    });
 }
 
 // === Public-View ===
@@ -61,7 +94,16 @@ public fun game_stats_id(self: &Registry, game_id: ID): ID {
 public fun init_stats(self: &mut Registry, game_id: &UID, ctx: &mut TxContext): GameStatistics {
     assert!(!self.game_stats_id.contains(game_id.to_inner()), EStatsAlreadyCreated);
     let stats = game_stats::new(game_id, ctx);
-    self.game_stats_id.add(game_id.to_inner(), stats.id());
+    let game_id_inner = game_id.to_inner();
+    let stats_id = stats.id();
+    self.game_stats_id.add(game_id_inner, stats_id);
+
+    // Event
+    emit(GameStatsInitializedEvent {
+        game_id: game_id_inner,
+        stats_id,
+    });
+
     stats
 }
 
@@ -73,7 +115,14 @@ public fun update_protocol_fee_bps(
     _cap: &OpenPlayAdminCap,
     protocol_fee_bps: u64,
 ) {
-    self.protocol_fee_bps = protocol_fee_bps
+    let old_fee_bps = self.protocol_fee_bps;
+    self.protocol_fee_bps = protocol_fee_bps;
+
+    // Event
+    emit(ProtocolFeeUpdatedEvent {
+        old_fee_bps,
+        new_fee_bps: protocol_fee_bps,
+    });
 }
 
 /// Allows a specific package version to interact with the Registry.
@@ -81,6 +130,11 @@ public fun update_protocol_fee_bps(
 public fun admin_allow_version(self: &mut Registry, _cap: &OpenPlayAdminCap, version: u64) {
     assert!(!self.allowed_versions.contains(&version), EVersionAlreadyAllowed);
     self.allowed_versions.insert(version);
+
+    // Event
+    emit(VersionAllowedEvent {
+        version,
+    });
 }
 
 /// Disallows a specific package version from interacting with the Registry.
@@ -88,6 +142,11 @@ public fun admin_allow_version(self: &mut Registry, _cap: &OpenPlayAdminCap, ver
 public fun admin_disallow_version(self: &mut Registry, _cap: &OpenPlayAdminCap, version: u64) {
     assert!(self.allowed_versions.contains(&version), EVersionAlreadyDisabled);
     self.allowed_versions.remove(&version);
+
+    // Event
+    emit(VersionDisallowedEvent {
+        version,
+    });
 }
 
 // === Private Functions ===
