@@ -169,7 +169,6 @@ fun process_bet(self: &mut GameStatistics, amount: u64) {
 /// Processes a win transaction by updating win statistics.
 /// Skips processing if the amount is zero.
 fun process_win(self: &mut GameStatistics, amount: u64) {
-
     // Early return if the amount is 0 (doesn't count as a win)
     if (amount == 0) {
         return

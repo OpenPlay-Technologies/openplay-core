@@ -1,9 +1,8 @@
 /// Registry holds all created games.
 module openplay_core::registry;
 
-use openplay_core::core_constants::{max_bps, current_version};
+use openplay_core::core_constants::current_version;
 use openplay_core::game_stats::{Self, GameStatistics};
-use std::uq32_32::{UQ32_32, from_quotient};
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
@@ -43,10 +42,10 @@ public(package) fun register_house(self: &mut Registry, house_id: ID) {
 }
 
 // === Public-View ===
-/// Returns the protocol fee factor as a UQ32_32 fixed-point number.
-public fun protocol_fee_factor(self: &Registry): UQ32_32 {
+/// Returns the protocol fee in basis points.
+public fun protocol_fee_bps(self: &Registry): u64 {
     self.assert_version();
-    from_quotient(self.protocol_fee_bps, max_bps())
+    self.protocol_fee_bps
 }
 
 /// Returns the GameStatistics ID for a given game ID.

@@ -4,11 +4,10 @@
 module openplay_core::vault;
 
 use openplay_core::balance_manager::{BalanceManager, PlayProof};
-use openplay_core::core_constants::precision_error_allowance;
 use sui::balance::{Self, Balance};
+use sui::event::emit;
 use sui::sui::SUI;
 use sui::vec_map::{Self, VecMap};
-use sui::event::emit;
 
 // === Errors ===
 const EInsufficientFunds: u64 = 1;
@@ -28,12 +27,12 @@ public struct Vault has store {
 
 /// Event emitted when the play balance is funded from reserves.
 public struct PlayBalanceFundedEvent has copy, drop {
-    amount: u64
+    amount: u64,
 }
 
 /// Event emitted when the play balance is cleared back to reserves at end of epoch.
 public struct PlayBalanceClearedEvent has copy, drop {
-    amount: u64
+    amount: u64,
 }
 
 // === Public-View Functions ---
@@ -97,7 +96,7 @@ public(package) fun process_end_of_day(self: &mut Vault, ctx: &TxContext): (bool
 
     // Event
     emit(PlayBalanceClearedEvent {
-        amount: amount_cleared
+        amount: amount_cleared,
     });
 
     return (true, prev_epoch, end_of_day_balance)
@@ -112,7 +111,7 @@ public(package) fun fund_play_balance(self: &mut Vault, target_balance: u64) {
 
     // Event
     emit(PlayBalanceFundedEvent {
-        amount: target_balance
+        amount: target_balance,
     });
 }
 
@@ -169,15 +168,9 @@ public(package) fun settle_balance_manager(
     balance_manager.ensure_sufficient_funds(amount_in);
     if (amount_out > amount_in) {
         // Vault needs to pay the difference to the balance_manager
-        let balance;
-        if (self.play_balance.value() >= amount_out - amount_in) {
-            balance = self.play_balance.split(amount_out - amount_in);
-        } else if (amount_out - amount_in - self.play_balance.value() <= precision_error_allowance()) {
-            // Small precision errors
-            balance = self.play_balance.withdraw_all();
-        } else {
-            abort EInsufficientFunds
-        };
+        let needed = amount_out - amount_in;
+        assert!(self.play_balance.value() >= needed, EInsufficientFunds);
+        let balance = self.play_balance.split(needed);
         balance_manager.deposit_with_proof(play_proof, balance);
     } else if (amount_in > amount_out) {
         // Balance manager needs to pay the difference to the vault

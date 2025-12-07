@@ -4,11 +4,9 @@
 module openplay_core::house_state;
 
 use openplay_core::account::{Self, Account};
-use openplay_core::calculations::actualize_amount;
-use openplay_core::core_constants::precision_error_allowance;
+use openplay_core::calculations::{actualize_amount, mul_ceil, mul_ceil_bps, mul_floor};
 use openplay_core::participation::Participation;
 use openplay_core::transaction::{Transaction, is_credit};
-use std::uq32_32::{UQ32_32, from_quotient, int_mul};
 use sui::event::emit;
 use sui::table::{Self, Table};
 
@@ -73,6 +71,7 @@ const EVolumeNotAvailable: u64 = 6;
 const EInvalidProfitsOrLosses: u64 = 7;
 const EHouseIsNotActive: u64 = 8;
 const EHouseIsAlreadyActive: u64 = 9;
+const EActualizedUnstakeExceedsStake: u64 = 10;
 
 // == Public-View Functions ==
 /// Returns whether the House is currently active.
@@ -175,8 +174,8 @@ public(package) fun process_transactions(
     self: &mut State,
     transactions: &vector<Transaction>,
     balance_manager_id: ID,
-    game_fee_factor: UQ32_32,
-    protocol_fee_factor: UQ32_32,
+    game_fee_bps: u64,
+    protocol_fee_bps: u64,
     ctx: &TxContext,
 ): (u64, u64, u64, u64) {
     self.assert_active();
@@ -189,9 +188,9 @@ public(package) fun process_transactions(
     // Process transactions for the history
     self.process_volumes(transactions);
 
-    // Calculate fees
-    let game_fee = calculate_fee(transactions, game_fee_factor);
-    let protocol_fee = calculate_fee(transactions, protocol_fee_factor);
+    // Calculate fees (round UP to favor protocol)
+    let game_fee = calculate_fee(transactions, game_fee_bps);
+    let protocol_fee = calculate_fee(transactions, protocol_fee_bps);
 
     // Settle account balance
     let (credit_balance, debit_balance) = self.accounts[balance_manager_id].settle();
@@ -263,14 +262,8 @@ public(package) fun process_end_of_day(
     if (profits > 0) {
         new_active_stake_amount = new_active_stake_amount + profits
     } else if (losses > 0) {
-        if (new_active_stake_amount >= losses) {
-            new_active_stake_amount = new_active_stake_amount - losses;
-        } else if (losses - new_active_stake_amount <= precision_error_allowance()) {
-            // Small rounding errors
-            new_active_stake_amount = 0;
-        } else {
-            abort EInvalidProfitsOrLosses
-        }
+        assert!(new_active_stake_amount >= losses, EInvalidProfitsOrLosses);
+        new_active_stake_amount = new_active_stake_amount - losses;
     };
 
     // The pending unstake need to be actualized to get the actual unstake amount
@@ -280,19 +273,24 @@ public(package) fun process_end_of_day(
     // => If you bear losses, then the actual unstake amount is smaller than the pending unstake amount
     if (self.pending_unstake > 0) {
         // Calculate the actual unstake amount
+        // Round UP for losses (user gets less, protocol keeps more)
+        // Round DOWN for profits (user gets less, protocol pays less)
+        let round_up = losses > 0;
         let actual_unstake_amount = actualize_amount(
             self.pending_unstake,
             profits,
             losses,
             prev_active_stake_amount,
+            round_up,
         );
 
-        // Deduct it from the new stake amount
-        if (actual_unstake_amount > new_active_stake_amount) {
-            new_active_stake_amount = 0;
-        } else {
-            new_active_stake_amount = new_active_stake_amount - actual_unstake_amount;
-        }
+        // Assert that actualized unstake amount does not exceed remaining stake.
+        // This is mathematically guaranteed by our rounding strategy (same proof as in participation.move).
+        // If this assertion fails, it indicates a bug in rounding logic or constraint enforcement.
+        assert!(actual_unstake_amount <= new_active_stake_amount, EActualizedUnstakeExceedsStake);
+
+        // Deduct the actualized unstake amount from remaining stake
+        new_active_stake_amount = new_active_stake_amount - actual_unstake_amount;
     };
 
     // Update the current active stake by the new amount
@@ -361,7 +359,7 @@ public(package) fun new(ctx: &mut TxContext): State {
 /// This can be used to claim profits or to claim unstaked amount that can available.
 /// Returns a tuple (credit_balance, debit_balance).
 /// The Vault uses thes values to perform any necessary transfers in the balance manager.
-/// 
+///
 /// By default, processes all epochs. Use `refresh_with_limit` to limit epochs processed per call.
 public(package) fun refresh(self: &State, participation: &mut Participation, ctx: &TxContext) {
     self.update_participation(participation, std::u64::max_value!(), ctx); // u64::MAX
@@ -458,13 +456,22 @@ public(package) fun calculate_ggr_share(self: &State, epoch: u64, account_stake:
         return (0, 0)
     };
 
-    let participation_ratio = from_quotient(account_stake, epoch_volume.active_stake_amount);
     if (end_of_day.day_losses > 0) {
-        let losses = int_mul(end_of_day.day_losses, participation_ratio);
+        // Round UP losses (users owe more) - favors protocol
+        let losses = mul_ceil(
+            end_of_day.day_losses,
+            account_stake,
+            epoch_volume.active_stake_amount,
+        );
         return (0, losses)
     };
     if (end_of_day.day_profits > 0) {
-        let profits = int_mul(end_of_day.day_profits, participation_ratio);
+        // Round DOWN profits (protocol pays less) - favors protocol
+        let profits = mul_floor(
+            end_of_day.day_profits,
+            account_stake,
+            epoch_volume.active_stake_amount,
+        );
         return (profits, 0)
     };
     return (0, 0)
@@ -473,11 +480,11 @@ public(package) fun calculate_ggr_share(self: &State, epoch: u64, account_stake:
 // == Private Functions ==
 /// Advances the participation state to the latest epoch by processing missed epochs.
 /// Calculates and applies profit/loss shares for each epoch between last_updated_epoch and current epoch.
-/// 
+///
 /// # Parameters
 /// - `max_epochs`: Maximum number of epochs to process in this call. Use `u64::MAX` to process all epochs (default behavior).
 ///                  This prevents DoS attacks when a participation hasn't been updated for many epochs.
-/// 
+///
 /// # Returns
 /// Returns `true` if all epochs were processed, `false` if more epochs remain to be processed.
 fun update_participation(
@@ -513,7 +520,7 @@ fun update_participation(
 
         (current_participation_epoch, stake, _pending_stake, _pending_unstake) =
             participation.current_state();
-        
+
         epochs_processed = epochs_processed + 1;
     };
 
@@ -562,13 +569,15 @@ fun process_volumes(self: &mut State, transactions: &vector<Transaction>) {
     });
 }
 
-/// Calculates the total fee based on debit transactions and a fee factor.
+/// Calculates the total fee based on debit transactions and a fee in basis points.
 /// Only bet (debit) transactions are subject to fees.
-fun calculate_fee(transactions: &vector<Transaction>, house_fee_factor: UQ32_32): u64 {
+/// Rounds UP to favor the protocol (collects slightly more fees).
+fun calculate_fee(transactions: &vector<Transaction>, fee_bps: u64): u64 {
     let mut total_fee = 0;
     transactions.do_ref!(|tx| {
         if (tx.is_debit()) {
-            let fee_amount = int_mul(tx.amount(), house_fee_factor);
+            // Round UP to favor protocol
+            let fee_amount = mul_ceil_bps(tx.amount(), fee_bps);
             total_fee = total_fee + fee_amount
         }
     });
@@ -606,17 +615,10 @@ fun process_win(self: &mut State, amount: u64) {
 }
 
 /// Removes stake from the inactive stake balance.
-/// Allows small precision errors up to the precision error allowance.
-/// Aborts if attempting to remove more than available (beyond precision allowance).
+/// Aborts if attempting to remove more than available.
 fun remove_inactive_stake(self: &mut State, amount: u64) {
-    if (self.inactive_stake >= amount) {
-        self.inactive_stake = self.inactive_stake - amount;
-    } else if (amount - self.inactive_stake <= precision_error_allowance()) {
-        // Small rounding errors
-        self.inactive_stake = 0;
-    } else {
-        abort ECannotUnstakeMoreThanStaked
-    }
+    assert!(self.inactive_stake >= amount, ECannotUnstakeMoreThanStaked);
+    self.inactive_stake = self.inactive_stake - amount;
 }
 
 /// Adds amount to the pending unstake balance (will be deactivated next epoch).

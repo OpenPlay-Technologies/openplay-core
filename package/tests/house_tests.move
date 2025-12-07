@@ -2,37 +2,42 @@
 module openplay_core::house_tests;
 
 use openplay_core::balance_manager;
-use openplay_core::core_constants::current_version;
-use openplay_core::core_test_utils::{
-    assert_eq_within_precision_allowance,
-    fund_house_for_playing,
-    default_house
-};
+use openplay_core::calculations::{mul_ceil, mul_ceil_bps, mul_floor, mul_floor_bps};
+use openplay_core::core_constants::{current_version, max_bps};
+use openplay_core::core_test_utils::{fund_house_for_playing, default_house};
 use openplay_core::game_stats;
 use openplay_core::house;
 use openplay_core::participation;
 use openplay_core::registry::{Self, registry_for_testing};
 use openplay_core::transaction::{bet, win};
-use std::unit_test::assert_eq;
-use std::uq32_32::{UQ32_32, int_mul, from_quotient};
+use std::unit_test::{assert_eq, destroy};
 use sui::coin::{mint_for_testing, burn_for_testing};
 use sui::sui::SUI;
 use sui::test_scenario::begin;
-use std::unit_test::destroy;
-
-public fun four_fifths(): UQ32_32 {
-    from_quotient(4, 5)
-}
-
-public fun one_fifth(): UQ32_32 {
-    from_quotient(1, 5)
-}
 
 /// Helper function to calculate profits after house fee (20% = 2000 bps)
 /// Returns the amount that goes to stakers after house fee is deducted
+/// Uses mul_floor to round down (protocol pays less to stakers)
 public fun profits_after_house_fee(gross_profits: u64, house_fee_bps: u64): u64 {
-    let staker_share_factor = from_quotient(10000 - house_fee_bps, 10000);
-    int_mul(gross_profits, staker_share_factor)
+    let staker_share_bps = max_bps() - house_fee_bps;
+    mul_floor_bps(gross_profits, staker_share_bps)
+}
+
+/// Helper to calculate 1/5 share using exact rounding (rounds down for profits, up for losses)
+public fun one_fifth_floor(amount: u64): u64 {
+    mul_floor(amount, 1, 5)
+}
+
+public fun one_fifth_ceil(amount: u64): u64 {
+    mul_ceil(amount, 1, 5)
+}
+
+public fun four_fifths_floor(amount: u64): u64 {
+    mul_floor(amount, 4, 5)
+}
+
+public fun four_fifths_ceil(amount: u64): u64 {
+    mul_ceil(amount, 4, 5)
 }
 
 #[test]
@@ -82,8 +87,8 @@ public fun complete_flow_share_losses() {
     );
 
     let expected_fee =
-        int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor());
+        mul_ceil_bps(10_000, house.game_fee_bps(&game_id)) 
+        + mul_ceil_bps(10_000, registry.protocol_fee_bps());
     assert!(balance_manager.balance() == 60_000); // The 10k in profits is added to the first balance manager
     assert!(house.play_balance(scenario.ctx()) == 90_000 - expected_fee); // The losses and fees are deducted from the play balance
 
@@ -102,14 +107,10 @@ public fun complete_flow_share_losses() {
 
     assert!(house.play_balance(scenario.ctx()) == 0); // Not enough funds for another active round
     assert!(house.reserve_balance(scenario.ctx()) == 90_000 - expected_fee); // The balance manager win + fees are gone from the reserve
-    assert_eq_within_precision_allowance(
-        participation.stake(),
-        20_000 - int_mul((10_000 + expected_fee), one_fifth()),
-    );
-    assert_eq_within_precision_allowance(
-        another_participation.stake(),
-        80_000 - int_mul((10_000 + expected_fee), four_fifths()),
-    );
+    let total_loss = 10_000 + expected_fee;
+    // Losses are distributed using mul_ceil (rounds up) - users absorb more losses
+    assert_eq!(participation.stake(), 20_000 - one_fifth_ceil(total_loss));
+    assert_eq!(another_participation.stake(), 80_000 - four_fifths_ceil(total_loss));
 
     // Now unstake everything
     let to_unstake = participation.stake();
@@ -128,14 +129,10 @@ public fun complete_flow_share_losses() {
     assert!(house.is_active(scenario.ctx()) == false);
     assert!(house.play_balance(scenario.ctx()) == 0);
 
-    assert_eq_within_precision_allowance(
-        participation.claimable_balance(),
-        20_000 - int_mul(10_000 + expected_fee, one_fifth()),
-    ); // Now the rest is released, namely 20_000 minus his bm's share of the losses
-    assert_eq_within_precision_allowance(
-        another_participation.claimable_balance(),
-        80_000 - int_mul(10_000 + expected_fee, four_fifths()),
-    ); // Now the rest is released, namely 80_000 minus his bm's share of the losses
+    let total_loss = 10_000 + expected_fee;
+    // Losses are distributed using mul_ceil (rounds up) - users absorb more losses
+    assert_eq!(participation.claimable_balance(), 20_000 - one_fifth_ceil(total_loss)); // Now the rest is released, namely 20_000 minus his bm's share of the losses
+    assert_eq!(another_participation.claimable_balance(), 80_000 - four_fifths_ceil(total_loss)); // Now the rest is released, namely 80_000 minus his bm's share of the losses
 
     destroy(house);
 
@@ -194,8 +191,8 @@ public fun complete_flow_share_profits() {
         scenario.ctx(),
     );
     let expected_fee =
-        int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor());
+        mul_ceil_bps(10_000, house.game_fee_bps(&game_id)) 
+        + mul_ceil_bps(10_000, registry.protocol_fee_bps());
     assert!(balance_manager.balance() == 45_000); // The 5k in losses is added to the first balance manager
     assert!(house.play_balance(scenario.ctx()) == 105_000 - expected_fee); // The profits are added to the play_balance, minus the fees
 
@@ -215,18 +212,10 @@ public fun complete_flow_share_profits() {
     let gross_profits = 5_000 - expected_fee;
     let profits_to_stakers = profits_after_house_fee(gross_profits, house.house_fee_bps());
     let new_active_stake = 100_000 + profits_to_stakers;
-    assert_eq_within_precision_allowance(
-        house.play_balance(scenario.ctx()),
-        new_active_stake
-    ); // House is funded again with new active stake (original + profits after house fee)
-    assert_eq_within_precision_allowance(
-        participation.stake(),
-        20_000 + int_mul(profits_to_stakers, one_fifth()),
-    );
-    assert_eq_within_precision_allowance(
-        another_participation.stake(),
-        80_000 + int_mul(profits_to_stakers, four_fifths()),
-    );
+    assert_eq!(house.play_balance(scenario.ctx()), new_active_stake); // House is funded again with new active stake (original + profits after house fee)
+    // Profits are distributed using mul_floor (rounds down) - protocol pays less
+    assert_eq!(participation.stake(), 20_000 + one_fifth_floor(profits_to_stakers));
+    assert_eq!(another_participation.stake(), 80_000 + four_fifths_floor(profits_to_stakers));
 
     // Now unstake everything
     let to_unstake = participation.stake();
@@ -250,13 +239,11 @@ public fun complete_flow_share_profits() {
     house.update_participation(&mut participation, scenario.ctx());
     house.update_participation(&mut another_participation, scenario.ctx());
 
-    assert_eq_within_precision_allowance(
-        participation.claimable_balance(),
-        20_000 + int_mul(profits_to_stakers, one_fifth()),
-    ); // Now the rest is released, namely 20_000 plus his bm's share of the profits (after house fee)
-    assert_eq_within_precision_allowance(
+    // Profits are distributed using mul_floor (rounds down) - protocol pays less
+    assert_eq!(participation.claimable_balance(), 20_000 + one_fifth_floor(profits_to_stakers)); // Now the rest is released, namely 20_000 plus his bm's share of the profits (after house fee)
+    assert_eq!(
         another_participation.claimable_balance(),
-        80_000 + int_mul(profits_to_stakers, four_fifths()),
+        80_000 + four_fifths_floor(profits_to_stakers),
     ); // Now the rest is released, namely 80_000 plus his bm's share of the profits (after house fee)
 
     destroy(house);
@@ -313,8 +300,8 @@ public fun complete_flow_share_profits_multi_round() {
         scenario.ctx(),
     );
     let expected_fee =
-        int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor());
+        mul_ceil_bps(10_000, house.game_fee_bps(&game_id)) 
+        + mul_ceil_bps(10_000, registry.protocol_fee_bps());
 
     // Skip 1 epoch without any activity and process some more transactions
     scenario.next_epoch(addr);
@@ -358,13 +345,11 @@ public fun complete_flow_share_profits_multi_round() {
 
     let gross_profits = 5_000 - expected_fee;
     let profits_to_stakers = profits_after_house_fee(gross_profits, house.house_fee_bps());
-    assert_eq_within_precision_allowance(
-        participation.claimable_balance(),
-        20_000 + 2 * int_mul(profits_to_stakers, one_fifth()),
-    );
-    assert_eq_within_precision_allowance(
+    // Profits are distributed using mul_floor (rounds down) - protocol pays less
+    assert_eq!(participation.claimable_balance(), 20_000 + 2 * one_fifth_floor(profits_to_stakers));
+    assert_eq!(
         another_participation.claimable_balance(),
-        80_000 + 2 * int_mul(profits_to_stakers, four_fifths()),
+        80_000 + 2 * four_fifths_floor(profits_to_stakers),
     );
 
     destroy(house);
@@ -421,8 +406,8 @@ public fun complete_flow_profits_and_losses_multi_round() {
         scenario.ctx(),
     );
     let expected_fee =
-        int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor());
+        mul_ceil_bps(10_000, house.game_fee_bps(&game_id)) 
+        + mul_ceil_bps(10_000, registry.protocol_fee_bps());
 
     // Skip 1 epoch without any activity and process some more transactions
     // Net result should be even
@@ -465,20 +450,31 @@ public fun complete_flow_profits_and_losses_multi_round() {
     house.update_participation(&mut participation, scenario.ctx());
     house.update_participation(&mut another_participation, scenario.ctx());
 
-    // First epoch had profits, so house fee was taken. Second epoch had equal losses.
+    // First epoch: profit of 5k - fees, house fee deducted, profits distributed (with rounding)
+    // Second epoch: loss of 5k + fees, losses distributed (with rounding)
     // Net result: stakers lost the house fee from first epoch + tx fees from both epochs
     let first_epoch_profits = 5_000 - expected_fee;
-    let first_epoch_house_fee = int_mul(first_epoch_profits, house.house_fee_factor());
-    let total_loss = 2 * expected_fee + first_epoch_house_fee;
-    
-    assert_eq_within_precision_allowance(
-        participation.claimable_balance(),
-        20_000 - int_mul(total_loss, one_fifth()),
+    let first_epoch_profits_to_stakers = profits_after_house_fee(
+        first_epoch_profits,
+        house.house_fee_bps(),
     );
-    assert_eq_within_precision_allowance(
-        another_participation.claimable_balance(),
-        80_000 - int_mul(total_loss, four_fifths()),
-    );
+
+    // First epoch: profits distributed (rounds down)
+    let first_epoch_profit_share_1 = one_fifth_floor(first_epoch_profits_to_stakers);
+    let first_epoch_profit_share_2 = four_fifths_floor(first_epoch_profits_to_stakers);
+
+    // Second epoch: loss of 5k + fees
+    let second_epoch_loss = 5_000 + expected_fee;
+    // Losses distributed (rounds up)
+    let second_epoch_loss_share_1 = one_fifth_ceil(second_epoch_loss);
+    let second_epoch_loss_share_2 = four_fifths_ceil(second_epoch_loss);
+
+    // Net: initial stake + first epoch profit - second epoch loss
+    let net_1 = 20_000 + first_epoch_profit_share_1 - second_epoch_loss_share_1;
+    let net_2 = 80_000 + first_epoch_profit_share_2 - second_epoch_loss_share_2;
+
+    assert_eq!(participation.claimable_balance(), net_1);
+    assert_eq!(another_participation.claimable_balance(), net_2);
 
     destroy(registry);
     destroy(house);
@@ -539,8 +535,8 @@ public fun complete_flow_multiple_funded_rounds() {
         scenario.ctx(),
     );
     let expected_fee =
-        int_mul(10_000, house.game_fee_factor(&game_id)) 
-        + int_mul(10_000, registry.protocol_fee_factor());
+        mul_ceil_bps(10_000, house.game_fee_bps(&game_id)) 
+        + mul_ceil_bps(10_000, registry.protocol_fee_bps());
     assert!(balance_manager.balance() == 60_000); // The 10k in profits is added to the first balance manager
     assert!(house.play_balance(scenario.ctx()) == 140_000 - expected_fee); // The losses and fees are deducted from the play balance
     assert!(participation.stake() == 30_000);
@@ -553,15 +549,11 @@ public fun complete_flow_multiple_funded_rounds() {
     house.update_participation(&mut another_participation, scenario.ctx());
 
     assert!(house.play_balance(scenario.ctx()) == 140_000 - expected_fee); // Fresh play balance
-    let first_participation_expected_stake = 30_000 - int_mul((10_000 + expected_fee), one_fifth());
-    assert_eq_within_precision_allowance(
-        participation.stake(),
-        first_participation_expected_stake,
-    ); // Losses are deducted now from the active stake
-    assert_eq_within_precision_allowance(
-        another_participation.stake(),
-        120_000 - int_mul((10_000 + expected_fee), four_fifths()),
-    );
+    let total_loss = 10_000 + expected_fee;
+    // Losses are distributed using mul_ceil (rounds up) - users absorb more losses
+    let first_participation_expected_stake = 30_000 - one_fifth_ceil(total_loss);
+    assert_eq!(participation.stake(), first_participation_expected_stake); // Losses are deducted now from the active stake
+    assert_eq!(another_participation.stake(), 120_000 - four_fifths_ceil(total_loss));
 
     // Stake another 20_000 with the first balance manager
     let stake = mint_for_testing<SUI>(20_000, scenario.ctx());
@@ -585,10 +577,9 @@ public fun complete_flow_multiple_funded_rounds() {
     assert!(
         house.play_balance(scenario.ctx()) == 140_000 - expected_fee - first_participation_expected_stake,
     ); // Play balance should be funded once again because the second staker has enough funds staked
-    assert_eq_within_precision_allowance(
-        participation.claimable_balance(),
-        20_000 + 30_000 - int_mul(10_000 + expected_fee, one_fifth()),
-    ); // Now the rest is released, namely 30_000 minus his bm's share of the losses
+    let total_loss = 10_000 + expected_fee;
+    // Losses are distributed using mul_ceil (rounds up) - users absorb more losses
+    assert_eq!(participation.claimable_balance(), 20_000 + 30_000 - one_fifth_ceil(total_loss)); // Now the rest is released, namely 30_000 minus his bm's share of the losses
 
     destroy(house);
     destroy(registry);
@@ -832,10 +823,10 @@ public fun claim_house_fees_ok() {
     );
 
     let expected_fee =
-        int_mul(10_000, house.game_fee_factor(&game_id))
-        + int_mul(10_000, registry.protocol_fee_factor());
+        mul_ceil_bps(10_000, house.game_fee_bps(&game_id))
+        + mul_ceil_bps(10_000, registry.protocol_fee_bps());
     let gross_profits = 5_000 - expected_fee;
-    let expected_house_fee = int_mul(gross_profits, house.house_fee_factor());
+    let expected_house_fee = mul_ceil_bps(gross_profits, house.house_fee_bps());
 
     // End the epoch to process profits and collect house fee
     scenario.next_epoch(addr);
@@ -843,10 +834,7 @@ public fun claim_house_fees_ok() {
 
     // Claim house fees
     let house_fee_coin = house.admin_claim_house_fees(&admin_cap, scenario.ctx());
-    assert_eq_within_precision_allowance(
-        house_fee_coin.value(),
-        expected_house_fee
-    );
+    assert_eq!(house_fee_coin.value(), expected_house_fee);
 
     destroy(house);
     destroy(registry);
@@ -914,7 +902,13 @@ public fun private_house_ok() {
 
     // Create a private house
     let openplay_admin_cap = registry::cap_for_testing(scenario.ctx());
-    let (house, admin_cap) = house::openplay_admin_new_house(&openplay_admin_cap, true, 100_000, 2000, scenario.ctx());
+    let (house, admin_cap) = house::openplay_admin_new_house(
+        &openplay_admin_cap,
+        true,
+        100_000,
+        2000,
+        scenario.ctx(),
+    );
     let participation = house.admin_new_participation(&admin_cap, scenario.ctx());
 
     destroy(house);
@@ -999,7 +993,7 @@ public fun process_transactions_basic() {
 
     let tx_cap = house.tx_cap_for_testing(object::id_from_address(addr));
     let game_fee_coin = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
-    let expected_game_fee = int_mul(10_000, house.game_fee_factor(&game_id));
+    let expected_game_fee = mul_ceil_bps(10_000, house.game_fee_bps(&game_id));
 
     assert!(game_fee_coin.value() == expected_game_fee);
 
@@ -1038,13 +1032,10 @@ public fun process_transactions_different_game_fees() {
     house.admin_set_game_fee(&admin_cap, game_id1, 100);
     house.admin_set_game_fee(&admin_cap, game_id2, 150);
 
-    let factor1 = house.game_fee_factor(&game_id1);
-    let factor2 = house.game_fee_factor(&game_id2);
-    let factor3 = house.game_fee_factor(&fake_game_id);
-
-    assert_eq!(factor1, from_quotient(100, 10000));
-    assert_eq!(factor2, from_quotient(150, 10000));
-    assert_eq!(factor3, from_quotient(0, 10000));
+    // Test game fee BPS getters
+    assert_eq!(house.game_fee_bps(&game_id1), 100);
+    assert_eq!(house.game_fee_bps(&game_id2), 150);
+    assert_eq!(house.game_fee_bps(&fake_game_id), 0);
 
     let participation = fund_house_for_playing(&mut house, 100_000, scenario.ctx());
     scenario.next_epoch(addr);
@@ -1068,7 +1059,7 @@ public fun process_transactions_different_game_fees() {
     );
     let tx_cap = house.tx_cap_for_testing(game_id1);
     let game_fee_coin1 = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
-    let expected_game_fee = int_mul(10_000, factor1);
+    let expected_game_fee = mul_ceil_bps(10_000, house.game_fee_bps(&game_id1));
     assert!(game_fee_coin1.value() == expected_game_fee);
 
     // Check fee for second game
@@ -1085,7 +1076,7 @@ public fun process_transactions_different_game_fees() {
     );
     let tx_cap = house.tx_cap_for_testing(game_id2);
     let game_fee_coin2 = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
-    let expected_game_fee = int_mul(10_000, factor2);
+    let expected_game_fee = mul_ceil_bps(10_000, house.game_fee_bps(&game_id2));
     assert!(game_fee_coin2.value() == expected_game_fee);
 
     destroy(house);
@@ -1103,7 +1094,6 @@ public fun process_transactions_different_game_fees() {
     destroy(stats2);
     scenario.end();
 }
-
 
 #[test]
 public fun process_transactions_no_bm() {
@@ -1134,7 +1124,7 @@ public fun process_transactions_no_bm() {
         scenario.ctx(),
     );
 
-    let expected_game_fee = int_mul(10_000, house.game_fee_factor(&game_id));
+    let expected_game_fee = mul_ceil_bps(10_000, house.game_fee_bps(&game_id));
 
     let tx_cap = house.tx_cap_for_testing(object::id_from_address(addr));
     let game_fee_coin = house.tx_admin_claim_game_fees(tx_cap, scenario.ctx());
@@ -1364,7 +1354,7 @@ public fun update_participation_with_epoch_limit() {
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
     let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
     let tx_cap = house.tx_cap_for_testing(game_id);
-    
+
     // Generate some profits
     house.tx_admin_process_transactions_v2(
         &registry,
@@ -1380,7 +1370,7 @@ public fun update_participation_with_epoch_limit() {
     // Use a dummy participation to trigger end-of-day processing for the house
     let mut dummy_participation = participation::empty(house.id(), scenario.ctx());
     let last_updated_epoch = participation.last_updated_epoch();
-    
+
     // Advance epochs and process end of day for each to generate history
     // We use dummy_participation to trigger house.process_end_of_day via update_participation
     let mut i = 0;
@@ -1396,22 +1386,38 @@ public fun update_participation_with_epoch_limit() {
 
     // Try to update with a limit of 3 epochs at a time
     // First call: should process 3 epochs and return false (more epochs remain)
-    let all_processed_1 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    let all_processed_1 = house.update_participation_with_limit(
+        &mut participation,
+        3,
+        scenario.ctx(),
+    );
     assert!(all_processed_1 == false);
     assert!(participation.last_updated_epoch() == last_updated_epoch + 3);
 
     // Second call: should process 3 more epochs
-    let all_processed_2 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    let all_processed_2 = house.update_participation_with_limit(
+        &mut participation,
+        3,
+        scenario.ctx(),
+    );
     assert!(all_processed_2 == false);
     assert!(participation.last_updated_epoch() == last_updated_epoch + 6);
 
     // Third call: should process 3 more epochs
-    let all_processed_3 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    let all_processed_3 = house.update_participation_with_limit(
+        &mut participation,
+        3,
+        scenario.ctx(),
+    );
     assert!(all_processed_3 == false);
     assert!(participation.last_updated_epoch() == last_updated_epoch + 9);
 
     // Fourth call: should process the remaining 1 epoch and return true (all processed)
-    let all_processed_4 = house.update_participation_with_limit(&mut participation, 3, scenario.ctx());
+    let all_processed_4 = house.update_participation_with_limit(
+        &mut participation,
+        3,
+        scenario.ctx(),
+    );
     assert!(all_processed_4 == true);
     assert!(participation.last_updated_epoch() == scenario.ctx().epoch());
 
@@ -1420,7 +1426,7 @@ public fun update_participation_with_epoch_limit() {
     scenario.next_epoch(addr);
     // Use dummy participation to trigger end-of-day processing
     house.update_participation(&mut dummy_participation, scenario.ctx());
-    
+
     // Update without limit - should process all epochs in one call
     house.update_participation(&mut participation, scenario.ctx());
     assert!(participation.last_updated_epoch() == scenario.ctx().epoch());

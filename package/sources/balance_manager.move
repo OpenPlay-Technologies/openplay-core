@@ -275,7 +275,6 @@ public fun destroy_empty(self: BalanceManager, cap: BalanceManagerCap) {
     balance.destroy_zero();
     object::delete(id);
 
-    
     let BalanceManagerCap { id, balance_manager_id: _ } = cap;
     object::delete(id);
 }

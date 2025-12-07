@@ -2,18 +2,17 @@
 module openplay_core::house_state_tests;
 
 use openplay_core::balance_manager;
+use openplay_core::calculations::mul_ceil_bps;
 use openplay_core::house_state;
 use openplay_core::transaction::{bet, win};
-use std::uq32_32::{int_mul, from_quotient, add, from_int, sub};
-use sui::test_scenario::begin;
 use std::unit_test::destroy;
-
+use sui::test_scenario::begin;
 
 #[test]
 public fun transactions_process_ok() {
     let addr = @0xa;
-    let house_fee_factor = from_quotient(3, 100);
-    let protocol_fee_factor = from_quotient(7, 100);
+    let house_fee_bps = 300; // 3% = 300 bps
+    let protocol_fee_bps = 700; // 7% = 700 bps
     let mut scenario = begin(addr);
 
     // Initialize state and balance manager
@@ -25,24 +24,19 @@ public fun transactions_process_ok() {
 
     // Process transactions: total bet of 10 and win of 5
     let txs = vector[bet(10), bet(0), win(5), win(0)];
-    let (
-        credit_balance,
-        debit_balance,
-        house_fee,
-        protocol_fee,
-    ) = state.process_transactions(
+    let (credit_balance, debit_balance, house_fee, protocol_fee) = state.process_transactions(
         &txs,
         bm.id(),
-        house_fee_factor,
-        protocol_fee_factor,
+        house_fee_bps,
+        protocol_fee_bps,
         scenario.ctx(),
     );
     // Assert account balance
     assert!(credit_balance == 5);
     assert!(debit_balance == 10);
-    // Assert fees
-    assert!(house_fee == int_mul(10, house_fee_factor));
-    assert!(protocol_fee == int_mul(10, protocol_fee_factor));
+    // Assert fees (using mul_ceil_bps which rounds up)
+    assert!(house_fee == mul_ceil_bps(10, house_fee_bps));
+    assert!(protocol_fee == mul_ceil_bps(10, protocol_fee_bps));
     // Assert volumes
     assert!(state.current_volumes().total_bet_amount() == 10);
     assert!(state.current_volumes().total_win_amount() == 5);
@@ -270,16 +264,10 @@ public fun stake_amount_correctly_transferred_profits() {
     // We are adding 20 stake, so sums up to +7
     // Plus 30 of the profits
 
-    let roi = from_quotient(30, 100);
-    let expected_value =
-        100 // From last epoch
-    + 30 // The distributed profits
-    - int_mul(10, add(from_int(1), roi))  // The unstaked amount
-    + 20; // The new added stake
-
-    // Note: this fails when you replace it by 137
-    // In this particular example, because of precision errors, the amount is rounded up to 138
-    assert!(state.inactive_stake()== expected_value);
+    // Profits: 30 (30% of 100)
+    // Unstake: 10, actualize_amount(10, 30, 0, 100, false) = mul_floor(10, 130, 100) = 13
+    // Expected: 100 + 30 - 13 + 20 = 137
+    assert!(state.inactive_stake() == 137);
 
     destroy(state);
     scenario.end();
@@ -319,16 +307,10 @@ public fun stake_amount_correctly_transferred_losses() {
     // Minus 30 of the profits
     // This gives 83
 
-    let negative_roi = from_quotient(30, 100);
-    let expected_value =
-        100 // From last epoch
-    - 30 // The distributed losses
-    - int_mul(10, sub(from_int(1), negative_roi))  // The unstaked amount
-    + 20; // The new added stake
-
-    // Note: this also succeeds if you replace it by 83
-    // In this particular example, there are no precision errors, but this is not a guarantee
-    assert!(state.inactive_stake() == expected_value);
+    // Losses: 30 (30% of 100)
+    // Unstake: 10, actualize_amount(10, 0, 30, 100, true) = mul_ceil(10, 70, 100) = 7
+    // Expected: 100 - 30 - 7 + 20 = 83
+    assert!(state.inactive_stake() == 83);
 
     destroy(state);
     scenario.end();
@@ -358,8 +340,10 @@ public fun stake_amount_correctly_transferred_full_unstake_profits() {
     scenario.next_epoch(addr);
     state.process_end_of_day(scenario.ctx().epoch() - 1, 7, 0, scenario.ctx());
 
-    // !!! This should be 5 but instead of 107 only 106 is being unstaked because of precision errors, leaving 1 in the stake balance
-    assert!(state.inactive_stake() == 6);
+    // With exact rounding: actualize_amount(100, 7, 0, 100, false) = mul_floor(100, 107, 100) = 107
+    // After unstake: stake = 107 - 107 = 0, new stake: 5
+    // Total inactive stake: 5
+    assert!(state.inactive_stake() == 5);
     destroy(state);
     scenario.end();
 }
@@ -388,14 +372,9 @@ public fun stake_amount_correctly_transferred_full_unstake_losses() {
     scenario.next_epoch(addr);
     state.process_end_of_day(scenario.ctx().epoch() - 1, 0, 7, scenario.ctx());
 
-    let negative_roi = from_quotient(7, 100);
-    let expected_value =
-        100 // From last epoch
-    - 7 // The distributed losses
-    - int_mul(100, sub(from_int(1), negative_roi))  // The unstaked amount
-    + 5; // The new added stake
-
-    assert!(state.inactive_stake() == expected_value);
+    // Losses: 7 (7% of 100)
+    // Unstake: 100, actualize_amount(100, 0, 7, 100, true) = mul_ceil(100, 93, 100) = 93
+    // Expected: 100 - 7 - 93 + 5 = 5
     assert!(state.inactive_stake() == 5);
 
     destroy(state);
@@ -422,10 +401,10 @@ public fun stake_amount_correctly_transferred_bankrupt() {
     // 5 new stake is coming in
     state.process_stake(5, scenario.ctx());
 
-    // Transfer next epoch with bankrupt losses
-    // We make the losses even more than the full 100. This is only possible because of precision errors in practice
+    // Transfer next epoch with bankrupt losses (100% loss)
+    // With strict checking, losses cannot exceed stake, so we use exactly 100
     scenario.next_epoch(addr);
-    state.process_end_of_day(scenario.ctx().epoch() - 1, 0, 101, scenario.ctx());
+    state.process_end_of_day(scenario.ctx().epoch() - 1, 0, 100, scenario.ctx());
 
     // The new stakers should never be taking any sort of losses from the previous epoch
     assert!(state.inactive_stake() == 5);
@@ -472,13 +451,28 @@ public fun calculate_ggr_share_losses() {
     assert!(losses_full_stake == 31);
     assert!(profits_full_stake == 0);
 
-    let stake_range = vector[1, 7, 13, 21, 25, 30, 40, 60, 80, 99];
-    stake_range.do!(|stake| {
-        let expected_loss = int_mul(31, from_quotient(stake, 100));
-        let (profits, losses) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, stake);
-        assert!(profits == 0);
-        assert!(losses == expected_loss);
-    });
+    // Losses are distributed using mul_ceil (rounds up) - users absorb more losses
+    // Hardcoded expected values: mul_ceil(31, stake, 100) for each stake
+    let (profits_1, losses_1) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 1);
+    assert!(profits_1 == 0 && losses_1 == 1); // mul_ceil(31, 1, 100) = 1
+    let (profits_7, losses_7) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 7);
+    assert!(profits_7 == 0 && losses_7 == 3); // mul_ceil(31, 7, 100) = 3
+    let (profits_13, losses_13) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 13);
+    assert!(profits_13 == 0 && losses_13 == 5); // mul_ceil(31, 13, 100) = 5
+    let (profits_21, losses_21) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 21);
+    assert!(profits_21 == 0 && losses_21 == 7); // mul_ceil(31, 21, 100) = 7
+    let (profits_25, losses_25) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 25);
+    assert!(profits_25 == 0 && losses_25 == 8); // mul_ceil(31, 25, 100) = 8
+    let (profits_30, losses_30) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 30);
+    assert!(profits_30 == 0 && losses_30 == 10); // mul_ceil(31, 30, 100) = 10
+    let (profits_40, losses_40) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 40);
+    assert!(profits_40 == 0 && losses_40 == 13); // mul_ceil(31, 40, 100) = 13
+    let (profits_60, losses_60) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 60);
+    assert!(profits_60 == 0 && losses_60 == 19); // mul_ceil(31, 60, 100) = 19
+    let (profits_80, losses_80) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 80);
+    assert!(profits_80 == 0 && losses_80 == 25); // mul_ceil(31, 80, 100) = 25
+    let (profits_99, losses_99) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 99);
+    assert!(profits_99 == 0 && losses_99 == 31); // mul_ceil(31, 99, 100) = 31
 
     destroy(state);
     scenario.end();
@@ -522,13 +516,28 @@ public fun calculate_ggr_share_profits() {
     assert!(losses_full_stake == 0);
     assert!(profits_full_stake == 81);
 
-    let stake_range = vector[1, 7, 13, 21, 25, 30, 40, 60, 80, 99];
-    stake_range.do!(|stake| {
-        let expected_profit = int_mul(81, from_quotient(stake, 100));
-        let (profits, losses) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, stake);
-        assert!(profits == expected_profit);
-        assert!(losses == 0);
-    });
+    // Profits are distributed using mul_floor (rounds down) - protocol pays less
+    // Hardcoded expected values: mul_floor(81, stake, 100) for each stake
+    let (profits_1, losses_1) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 1);
+    assert!(profits_1 == 0 && losses_1 == 0); // mul_floor(81, 1, 100) = 0
+    let (profits_7, losses_7) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 7);
+    assert!(profits_7 == 5 && losses_7 == 0); // mul_floor(81, 7, 100) = 5
+    let (profits_13, losses_13) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 13);
+    assert!(profits_13 == 10 && losses_13 == 0); // mul_floor(81, 13, 100) = 10
+    let (profits_21, losses_21) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 21);
+    assert!(profits_21 == 17 && losses_21 == 0); // mul_floor(81, 21, 100) = 17
+    let (profits_25, losses_25) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 25);
+    assert!(profits_25 == 20 && losses_25 == 0); // mul_floor(81, 25, 100) = 20
+    let (profits_30, losses_30) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 30);
+    assert!(profits_30 == 24 && losses_30 == 0); // mul_floor(81, 30, 100) = 24
+    let (profits_40, losses_40) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 40);
+    assert!(profits_40 == 32 && losses_40 == 0); // mul_floor(81, 40, 100) = 32
+    let (profits_60, losses_60) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 60);
+    assert!(profits_60 == 48 && losses_60 == 0); // mul_floor(81, 60, 100) = 48
+    let (profits_80, losses_80) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 80);
+    assert!(profits_80 == 64 && losses_80 == 0); // mul_floor(81, 80, 100) = 64
+    let (profits_99, losses_99) = state.calculate_ggr_share(scenario.ctx().epoch() - 1, 99);
+    assert!(profits_99 == 80 && losses_99 == 0); // mul_floor(81, 99, 100) = 80
 
     destroy(state);
     scenario.end();

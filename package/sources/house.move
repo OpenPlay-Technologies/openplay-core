@@ -3,6 +3,7 @@
 module openplay_core::house;
 
 use openplay_core::balance_manager::{Self, BalanceManager, PlayCap};
+use openplay_core::calculations::mul_ceil_bps;
 use openplay_core::core_constants::max_bps;
 use openplay_core::game_stats::GameStatistics;
 use openplay_core::house_state::{Self, State};
@@ -10,7 +11,6 @@ use openplay_core::participation::{Self, Participation};
 use openplay_core::registry::{Registry, OpenPlayAdminCap};
 use openplay_core::transaction::Transaction;
 use openplay_core::vault::{Self, Vault};
-use std::uq32_32::{UQ32_32, from_quotient, int_mul};
 use sui::coin::Coin;
 use sui::event::emit;
 use sui::sui::SUI;
@@ -151,17 +151,13 @@ public fun reserve_balance(self: &mut House, ctx: &mut TxContext): u64 {
     self.vault.reserve_balance()
 }
 
-/// Returns the game fee factor for a specific game as a UQ32_32 fixed-point number.
+/// Returns the game fee in basis points for a specific game.
 /// Returns 0 if the game has no configured fee.
-public fun game_fee_factor(self: &House, game_id: &ID): UQ32_32 {
-    let game_fee_bps = self.games_fee_bps.try_get(game_id).get_with_default(0);
-    from_quotient(game_fee_bps, max_bps())
+public fun game_fee_bps(self: &House, game_id: &ID): u64 {
+    self.games_fee_bps.try_get(game_id).get_with_default(0)
 }
 
-public fun house_fee_factor(self: &House): UQ32_32 {
-    from_quotient(self.house_fee_bps, max_bps())
-}
-
+/// Returns the house fee in basis points.
 public fun house_fee_bps(self: &House): u64 {
     self.house_fee_bps
 }
@@ -253,9 +249,9 @@ public fun update_participation(
 /// Updates a participation with a limit on the number of epochs processed per call.
 /// Returns `true` if all epochs were processed, `false` if more epochs remain.
 /// Useful for catching up participations that haven't been updated for many epochs.
-/// 
+///
 /// # Parameters
-/// - `max_epochs`: Maximum number of epochs to process in this call. Use a reasonable value (e.g., 100) 
+/// - `max_epochs`: Maximum number of epochs to process in this call. Use a reasonable value (e.g., 100)
 ///                 to prevent gas limit issues when catching up after many epochs.
 public fun update_participation_with_limit(
     self: &mut House,
@@ -348,8 +344,8 @@ public fun tx_admin_process_transactions_v2(
     // Generate proof
     let play_proof = balance_manager.generate_proof_as_player(play_cap, ctx);
 
-    let game_fee_factor = self.game_fee_factor(&game_id);
-    let protocol_fee_factor = registry.protocol_fee_factor();
+    let game_fee_bps = self.game_fee_bps(&game_id);
+    let protocol_fee_bps = registry.protocol_fee_bps();
 
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
@@ -359,8 +355,8 @@ public fun tx_admin_process_transactions_v2(
         .process_transactions(
             transactions,
             balance_manager.id(),
-            game_fee_factor,
-            protocol_fee_factor,
+            game_fee_bps,
+            protocol_fee_bps,
             ctx,
         );
 
@@ -412,8 +408,8 @@ public fun tx_admin_process_transactions_v2_no_bm(
     // Generate proof
     let play_proof = balance_manager.generate_proof_as_owner(&bm_cap, ctx);
 
-    let game_fee_factor = self.game_fee_factor(&game_id);
-    let protocol_fee_factor = registry.protocol_fee_factor();
+    let game_fee_bps = self.game_fee_bps(&game_id);
+    let protocol_fee_bps = registry.protocol_fee_bps();
 
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
@@ -423,8 +419,8 @@ public fun tx_admin_process_transactions_v2_no_bm(
         .process_transactions(
             transactions,
             balance_manager.id(),
-            game_fee_factor,
-            protocol_fee_factor,
+            game_fee_bps,
+            protocol_fee_bps,
             ctx,
         );
 
@@ -491,15 +487,15 @@ public fun admin_claim_house_fees(
     ctx: &mut TxContext,
 ): Coin<SUI> {
     self.assert_valid_admin_cap(admin_cap);
-    
+
     let fee_coin = self.vault.withdraw_house_fees().into_coin(ctx);
-    
+
     // Event
     emit(HouseFeesClaimedEvent {
         house_id: self.id(),
         amount: fee_coin.value(),
     });
-    
+
     fee_coin
 }
 
@@ -651,11 +647,11 @@ fun process_end_of_day(self: &mut House, ctx: &TxContext) {
             profits = 0;
             losses = 0;
         };
-        
+
         // Calculate and deduct house fee from profits (performance fee)
+        // Round UP to favor protocol (collects slightly more fees)
         let house_fee = if (profits > 0) {
-            let house_fee_factor = self.house_fee_factor();
-            int_mul(profits, house_fee_factor)
+            mul_ceil_bps(profits, self.house_fee_bps)
         } else {
             0
         };
@@ -664,12 +660,12 @@ fun process_end_of_day(self: &mut House, ctx: &TxContext) {
         } else {
             0
         };
-        
+
         // Store house fee in vault
         if (house_fee > 0) {
             self.vault.process_house_fee(house_fee);
         };
-        
+
         // Process the profits / losses with the state (after house fee deduction)
         self.state.process_end_of_day(prev_epoch, profits_after_house_fee, losses, ctx);
 

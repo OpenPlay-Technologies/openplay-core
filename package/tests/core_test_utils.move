@@ -1,23 +1,12 @@
 #[test_only]
 module openplay_core::core_test_utils;
 
-use openplay_core::core_constants::precision_error_allowance;
 use openplay_core::house::{Self, House, HouseAdminCap};
 use openplay_core::participation::Participation;
 use sui::coin::mint_for_testing;
 use sui::random::{Random, create_for_testing};
 use sui::sui::SUI;
 use sui::test_scenario::{begin, return_shared};
-
-public fun assert_eq_within_precision_allowance(a: u64, b: u64) {
-    // std::debug::print(&a);
-    // std::debug::print(&b);
-    if (a >= b) {
-        assert!(a - b <= precision_error_allowance())
-    } else {
-        assert!(b - a <= precision_error_allowance())
-    };
-}
 
 public fun create_and_fix_random(bytes: vector<u8>) {
     // Create the random

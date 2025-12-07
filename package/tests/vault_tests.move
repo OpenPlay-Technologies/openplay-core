@@ -3,10 +3,10 @@ module openplay_core::vault_tests;
 
 use openplay_core::balance_manager;
 use openplay_core::vault;
+use std::unit_test::destroy;
 use sui::coin::mint_for_testing;
 use sui::sui::SUI;
 use sui::test_scenario::{begin, next_epoch};
-use std::unit_test::destroy;
 
 #[test]
 public fun deposit_withdraw_ok() {
@@ -215,7 +215,6 @@ public fun process_game_fees_fail() {
         abort 0
     }
 }
-
 
 #[test]
 public fun end_of_day_ok() {
