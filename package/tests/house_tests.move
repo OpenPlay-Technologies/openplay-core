@@ -1442,3 +1442,135 @@ public fun update_participation_with_epoch_limit() {
     destroy(stats);
     scenario.end();
 }
+
+/// Test to verify that a user cannot bet more than their balance, even if they win more than they bet.
+/// This prevents the bug where a user with 0 balance can bet 100 and win 150, effectively betting with money they don't have.
+#[test, expected_failure(abort_code = balance_manager::EBalanceTooLow)]
+public fun bet_without_funds_win_higher_than_bet() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+
+    // Create a new house and balance manager
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, _admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Explicitly verify balance is 0
+    assert!(balance_manager.balance() == 0, 0);
+
+    // Stake to activate house
+    let stake = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.stake(&mut participation, stake, scenario.ctx());
+
+    // Get tx cap before processing transactions
+    let tx_cap = house.tx_cap_for_testing(game_id);
+
+    // Try to process transactions: bet 100, win 150
+    // This should fail because the user doesn't have 100 to bet, even though they would win 150
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut game_stats::stats_for_testing(game_id, scenario.ctx()),
+        tx_cap,
+        &mut balance_manager,
+        &vector[bet(100), win(150)],
+        &play_cap,
+        scenario.ctx(),
+    );
+    abort 0
+}
+
+/// Test to verify that a user cannot bet more than their balance, even if the win exactly equals the bet.
+#[test, expected_failure(abort_code = balance_manager::EBalanceTooLow)]
+public fun bet_without_funds_win_equals_bet() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+
+    // Create a new house and balance manager
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, _admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Explicitly verify balance is 0
+    assert!(balance_manager.balance() == 0, 0);
+
+    // Stake to activate house
+    let stake = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.stake(&mut participation, stake, scenario.ctx());
+
+    // Get tx cap before processing transactions
+    let tx_cap = house.tx_cap_for_testing(game_id);
+
+    // Try to process transactions: bet 100, win 100
+    // This should fail because the user doesn't have 100 to bet
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut game_stats::stats_for_testing(game_id, scenario.ctx()),
+        tx_cap,
+        &mut balance_manager,
+        &vector[bet(100), win(100)],
+        &play_cap,
+        scenario.ctx(),
+    );
+    abort 0
+}
+
+/// Test to verify that the system correctly handles the case when user has sufficient funds.
+#[test]
+public fun bet_with_sufficient_funds_win_higher_than_bet() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+
+    // Create a new house and balance manager
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Deposit 200 to the balance manager (enough to cover the bet)
+    let deposit = mint_for_testing<SUI>(200, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, deposit, scenario.ctx());
+    assert!(balance_manager.balance() == 200);
+
+    // Stake to activate house
+    let stake = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.stake(&mut participation, stake, scenario.ctx());
+
+    // Process transactions: bet 100, win 150
+    // This should succeed because the user has 200 (enough to cover the bet of 100)
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[bet(100), win(150)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // After the transaction:
+    // - User bet 100 (debit_balance = 100), won 150 (credit_balance = 150)
+    // - Net settlement: vault pays user 50 (150 - 100)
+    // - User's balance: 200 (initial) + 50 (net win) = 250
+    // Note: The ensure_sufficient_funds check ensures user had 100 to cover the bet
+    assert!(balance_manager.balance() == 250);
+
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap);
+    destroy(participation);
+    destroy(stats);
+    scenario.end();
+}

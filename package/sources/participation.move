@@ -38,20 +38,6 @@ public struct ParticipationRemovedEvent has copy, drop {
     participation_id: ID,
 }
 
-/// Event emitted when stake is added to a Participation.
-public struct StakeAddedEvent has copy, drop {
-    participation_id: ID,
-    amount: u64,
-    pending: bool,
-}
-
-/// Event emitted when stake is removed from a Participation.
-public struct StakeRemovedEvent has copy, drop {
-    participation_id: ID,
-    amount: u64,
-    pending_stake_removed: u64,
-}
-
 /// Event emitted when end-of-day processing completes for a Participation.
 public struct ParticipationEndOfDayProcessedEvent has copy, drop {
     participation_id: ID,
@@ -155,13 +141,6 @@ public(package) fun add_stake(
     } else {
         self.stake = self.stake + amount;
     };
-
-    // Event
-    emit(StakeAddedEvent {
-        participation_id: self.id(),
-        amount: amount,
-        pending: is_active,
-    });
 }
 
 /// Unstakes the account.
@@ -207,18 +186,11 @@ public(package) fun unstake_v2(
     // If the house is active then we add the remaining amount to the `pending_unstake` balance
     if (is_active) {
         self.pending_unstake = self.pending_unstake + remaining_amount;
-    } // If the house is inactive we can just deduct it immediately and add it to claimable balance
+    }     // If the house is inactive we can just deduct it immediately and add it to claimable balance
     else {
         self.stake = self.stake - remaining_amount;
         self.claimable_balance = self.claimable_balance + remaining_amount;
     };
-
-    // Evemt
-    emit(StakeRemovedEvent {
-        participation_id: self.id(),
-        amount: remaining_amount,
-        pending_stake_removed,
-    });
 
     (remaining_amount, pending_stake_removed)
 }

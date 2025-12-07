@@ -1,481 +1,299 @@
-# OpenPlay Core: Architecture Summary
+# OpenPlay: Decentralized Casino Infrastructure
 
-## **Current State**
+## What is OpenPlay?
 
-### **What Exists Now**
+OpenPlay is a **permissionless, decentralized casino infrastructure protocol** built on Sui blockchain. It enables anyone to create, operate, and participate in transparent, on-chain gambling houses where players can enjoy provably fair games and stakers can earn returns by providing liquidity.
 
-OpenPlay is a GambleFi protocol on Sui that provides infrastructure for house-based gambling games. The core architecture consists of:
+Unlike traditional online casinos that operate as centralized entities, OpenPlay is a **protocol** - a set of smart contracts that anyone can use to build their own casino. Think of it like Uniswap for gambling: the protocol provides the infrastructure, and the community builds the games and operates the houses.
 
-**Core Components:**
-- **Registry**: Central protocol registry that tracks all houses, manages protocol fees, and handles version control
-- **House**: Shared objects that process bet/win transactions, manage whitelisted games, and handle fee distribution
-- **Vault**: Stores all house assets, separates funds into play balance (active gameplay) and reserve balance (staked funds)
-- **Participation**: NFT-like objects that represent a user's stake in a house, tracks profit/loss over epochs
-- **Balance Manager**: Shared objects that hold player funds, with delegatable PlayCaps for gameplay
-- **Game Statistics**: Tracks volume and statistics per game instance
+## Core Philosophy
 
-**Key Mechanics:**
-- **Epoch-based profit/loss**: Houses operate in epochs (Sui epochs = ~24 hours). At end of epoch, profits/losses are calculated and distributed proportionally to stakers
-- **House activation**: Houses must reach minimum stake threshold to activate. When active, funds move from reserve to play balance for gameplay
-- **Capability-based security**: Uses Sui capabilities (HouseAdminCap, HouseTransactionCap, PlayCap, etc.) for access control
-- **Game whitelisting**: House admins whitelist game instances (identified by UID) to allow them to process transactions
+OpenPlay is built on three fundamental principles:
 
-**Current Fee Model:**
-- **Protocol fee**: Global fee (in Registry) going to OpenPlay protocol (set to 0% initially)
-- **Game fee**: Per-game instance fee going to... someone (currently unclear who owns it)
+1. **Permissionless**: Anyone can create a house, deploy games, or stake funds - no approval needed
+2. **Transparent**: All transactions, fees, and profit/loss distributions are on-chain and verifiable
+3. **Decentralized**: No single entity controls the protocol; houses compete for players and stakers
 
-### **Problems Identified**
+## How It Works
 
-1. **Fee attribution is unclear**: Who gets game fees? If you write a package and someone else deploys an instance, how do you get paid?
+### The House Model
 
-2. **Referral system is clunky**: Passing `referral_id` on every transaction is:
-   - Gas inefficient
-   - Easy to bypass (optional)
-   - Confusing conceptually (operator vs referral)
+In OpenPlay, each casino operates as a **House** - a shared smart contract object that manages:
+- **Staked funds** from liquidity providers
+- **Game transactions** (bets and wins)
+- **Profit/loss distribution** to stakers
+- **Fee collection** for protocol, games, and house operators
 
-3. **Operator model is undefined**: Current code has referral fees, but no clear "operator" concept. How do website operators get rewarded for driving traffic?
+**Key Concept**: Each house is independent. Multiple houses can exist simultaneously, each with their own:
+- Game selection (whitelisted games)
+- Fee structure
+- Minimum stake requirements
+- Risk profile and strategy
 
-4. **Risk of malicious games**: Once whitelisted, a game can send arbitrary transactions and potentially drain the house. No per-game limits or circuit breakers.
+This creates a competitive market where houses differentiate themselves through game selection, fees, returns, and reputation.
 
-5. **Lack of differentiation**: No distinction between:
-   - Package developer (writes reusable Move code)
-   - Instance creator (deploys a specific instance, might just be making a custom UI/skin)
-   - Operator (runs casino website, drives traffic)
+### Epoch-Based Operations
 
-6. **Too complex for solo MVP**: As the sole operator, game dev, and house owner initially, the multi-layered fee system feels over-engineered.
+Houses operate in **epochs** (approximately 24 hours, aligned with Sui epochs):
 
----
+1. **During the Epoch**: 
+   - Players place bets using whitelisted games
+   - Wins and losses are settled in real-time
+   - Fees are collected from each transaction
 
-## **The Vision**
+2. **End of Epoch**:
+   - Total profits or losses are calculated
+   - House performance fees are deducted (if profitable)
+   - Remaining profits are distributed proportionally to all stakers
+   - New stakes become active for the next epoch
 
-### **What OpenPlay Should Become**
+This epoch-based system ensures fair profit/loss sharing - everyone who stakes during an epoch shares proportionally in that epoch's results.
 
-A **permissionless, community-driven protocol** where:
+## Key Participants
 
-1. **Game developers** can publish reusable game packages and earn fees from any house that uses them
-2. **Skin/frontend developers** can create custom UIs for existing games without writing smart contracts
-3. **Operators** can launch casinos by creating houses, curating games, and attracting stakers
-4. **Stakers** can provide liquidity to houses and earn proportional profits
-5. **Protocol** (you) can step back and let the community build games while earning small protocol fees
+### Players
 
-**Key principles:**
-- Open and permissionless (anyone can build)
-- Trustless incentives (all fees on-chain, capability-based)
-- Composable (games are public goods, reusable across houses)
-- Sustainable (aligned incentives for all participants)
+Players enjoy provably fair games on any OpenPlay house. They:
+- Create a **Balance Manager** to hold their gameplay funds
+- Connect to any house's frontend
+- Play whitelisted games with instant settlement
+- Never need to trust a centralized operator
 
----
+**Security**: Players maintain full control of their funds through the Balance Manager system. They can deposit, play, and withdraw at any time - even if a house is paused or upgrading.
 
-## **The New Model: 1 House = 1 Operator**
+### Stakers (Liquidity Providers)
 
-### **Core Architectural Decision**
+Stakers provide liquidity to houses and earn proportional returns. They:
+- Create a **Participation** NFT for each house they want to stake in
+- Stake SUI tokens into the house
+- Earn a proportional share of house profits each epoch
+- Can unstake at any time (processed at end of epoch)
 
-**Each operator website = one house**
+**Returns**: Stakers earn based on:
+- House performance (profits from games)
+- Their stake size (proportional distribution)
+- House fee structure (performance fees reduce returns)
 
-This matches the web2 gambling model:
-- Bet365 runs its own bankroll
-- Stake.com runs its own bankroll
-- They compete for players
+**Risk**: Stakers bear losses if the house loses money during an epoch. Losses are shared proportionally, just like profits.
 
-In OpenPlay:
-- YourCasino.com creates House A
-- CompetitorCasino.com creates House B
-- They compete for players AND stakers
+### House Operators
 
-### **The Four Roles**
-
-**1. Protocol (OpenPlay)**
-- Maintains core contracts (Registry, House, Vault, etc.)
-- Earns protocol fee from all houses (0-2% of bet volume)
-- Eventually can be governed by token holders
-
-**2. Package Developers**
-- Write reusable game logic (e.g., CoinFlip, Dice, Roulette packages)
-- Publish packages to Sui
-- Anyone can create instances from their packages
-- Earn fee from ALL instances of their package across ALL houses
-- Example: You write CoinFlip.move, publish it. Every house that uses any CoinFlip instance pays you a fee.
-
-**3. Instance Creators (Skin Developers)**
-- Deploy specific instances of game packages
-- Customize parameters (min/max bet, house edge, etc.)
-- Create custom UI/graphics for their instance
-- Earn fee from THEIR instance only
-- Example: Someone creates a "cyberpunk-themed CoinFlip" instance using your package, builds fancy UI, earns fees when their instance is played
-
-**4. House Admins (Operators)**
-- Create a house with minimum stake
+House operators create and manage casinos. They:
+- Create a House with minimum stake requirements
 - Whitelist game instances they trust
-- Set fee splits when whitelisting
-- Run operator website (frontend)
-- Drive traffic and curate game selection
-- Earn through:
-  - Staking their own capital
-  - House admin fee (% of house profits before distribution)
-
-### **How Fees Work**
-
-**Fee hierarchy per bet:**
-```
-Player bets 100 SUI on a game with 2% house edge
-→ House edge = 2 SUI goes to the house vault
-
-Fee distribution from that 2 SUI:
-1. Protocol fee (0-2%): 0.04 SUI → OpenPlay treasury
-2. Package dev fee (5-10%): 0.20 SUI → Package developer
-3. Instance creator fee (2-5%): 0.10 SUI → Instance creator/skin dev
-4. Remaining: 1.66 SUI → House profit pool
-
-House profit pool (1.66 SUI):
-5. House admin fee (5-10%): 0.17 SUI → House admin (operator)
-6. Stakers: 1.49 SUI → Distributed proportionally to all stakers
-
-If operator staked 50% of house:
-- Their total: 0.17 (admin fee) + 0.745 (50% of staker pool) = 0.915 SUI
-```
-
-**Fee caps are tracked in Vault:**
-- `collected_protocol_fees`: By house, claimed by OpenPlay admin
-- `collected_package_dev_fees`: By package developer address, claimed by that address
-- `collected_instance_creator_fees`: By instance creator address, claimed by that address
-- House admin fee: Taken before staker distribution each epoch
-
----
-
-## **Functional Flows**
-
-### **Flow 1: Package Developer Publishes Game**
-
-```
-1. Developer writes CoinFlip.move
-   - Includes: create_instance() function (anyone can call)
-   - Hardcodes: package_developer address in the package
-
-2. Deploys to Sui
-   - Gets package ID: 0xPKG...
-
-3. Anyone can now create instances:
-   - Call: coin_flip::create_instance(min_bet, max_bet, house_edge)
-   - Returns: Game instance with UID
-   - Instance stores: package_developer address + instance_creator address
-
-4. Package dev earns automatically:
-   - When ANY instance from their package is played
-   - Fees accumulate in vault by developer address
-   - They claim anytime: house.claim_package_dev_fees()
-```
-
-**Key: Permissionless and automatic - no coordination needed.**
+- Set fee structures (game fees, house performance fees)
+- Build frontends to attract players
+- Earn through house performance fees and their own stake
 
-### **Flow 2: Skin Developer Creates Custom Instance**
-
-```
-1. Skin dev finds CoinFlip package they like
-
-2. Creates instance:
-   - Calls: coin_flip::create_instance(params)
-   - Gets: Instance ID 0xINST...
-   - Instance records: instance_creator = skin_dev_address
-
-3. Builds custom UI:
-   - Pixel art theme, custom animations, etc.
-   - Frontend calls their specific instance 0xINST...
-
-4. Submits to operators:
-   - Contacts house admins: "Whitelist my instance 0xINST..."
-   - Operators review and decide
-
-5. If whitelisted, earns automatically:
-   - Fees accumulate when their instance is played
-   - They claim: house.claim_instance_creator_fees()
-```
-
-**Key: No smart contract knowledge needed - just call existing functions and build UI.**
-
-### **Flow 3: Operator Launches Casino**
-
-```
-1. Operator creates house:
-   - Calls: openplay_admin_new_house(private=false, min_activation=X, fees)
-   - Gets: House object + HouseAdminCap
-   - Shares house publicly
-
-2. Stakes initial liquidity:
-   - Calls: house.stake(participation, coins)
-   - House activates once minimum reached
-
-3. Whitelists games:
-   - Reviews game instances (code audit, testing)
-   - Whitelists each: house.admin_add_tx_allowed_with_fees(
-       game_id,
-       package_dev_fee_bps: 500,
-       instance_creator_fee_bps: 200,
-     )
-   - Sets house admin fee: 500 bps (5%)
-
-4. Builds operator frontend:
-   - Lists all whitelisted games
-   - Players connect wallets, create balance managers
-   - Gameplay flows through house
-
-5. Earns as operator:
-   - House admin fee from profits each epoch
-   - Plus returns from their own stake
-```
-
-**Key: Full control over which games to offer and risk management.**
-
-### **Flow 4: Player Gameplay**
-
-```
-1. Player visits operator website (e.g., YourCasino.com)
-
-2. Creates/connects balance manager:
-   - Creates: balance_manager::new()
-   - Deposits funds: balance_manager.deposit(coins)
+**Control**: Operators have full control over:
+- Which games to offer (whitelisting)
+- Fee structures (within protocol limits)
+- House branding and user experience
 
-3. Selects game and plays:
-   - UI shows: "CoinFlip Cyberpunk" (instance 0xINST...)
-   - Player: Bets 1 SUI on Heads
-   - Frontend calls: coin_flip::play(game, house, balance_manager, ...)
+**Responsibility**: Operators must:
+- Maintain sufficient liquidity (or attract stakers)
+- Curate safe, fair games
+- Build trust with players and stakers
 
-4. Game processes:
-   - Game borrows HouseTransactionCap from house
-   - Generates random result (Sui VRF)
-   - Creates transactions: [bet(1 SUI), win(1.96 SUI)] or [bet(1 SUI)]
-   - Calls: house.process_transactions(transactions, ...)
-
-5. House processes:
-   - Reads attribution from game instance (package_dev, instance_creator)
-   - Calculates all fees
-   - Settles balance manager (debit bet, credit win)
-   - Distributes fees to correct buckets
-   - Updates statistics
-
-6. Player sees result immediately
-```
-
-**Key: Seamless UX - player doesn't think about fees or backend complexity.**
-
-### **Flow 5: Staker Provides Liquidity**
-
-```
-1. User evaluates houses:
-   - Looks at Registry: lists all houses
-   - Compares: game selection, historical returns, operator reputation
-
-2. Chooses a house (e.g., House A)
-
-3. Creates participation:
-   - Calls: house.new_participation()
-   - Gets: Participation NFT (owned object)
-
-4. Stakes funds:
-   - Calls: house.stake(participation, coins)
-   - Funds go to reserve balance
-   - If house active: stake is "pending" until next epoch
-   - If house inactive: stake is immediate
-
-5. Earns profits automatically:
-   - At end of each epoch: house calculates profits/losses
-   - Profits distributed proportionally to active stake
-   - Participation object updates with new balance
-
-6. Can unstake:
-   - Calls: house.unstake(participation, amount)
-   - Unstake is "pending" until next epoch
-   - Next epoch: can claim coins
-
-7. Claims rewards:
-   - Calls: house.claim_all(participation)
-   - Receives coins proportional to profits earned
-```
+### Game Developers
 
-**Key: Simple staking mechanism, automatic profit distribution.**
-
-### **Flow 6: End of Epoch Processing**
-
-```
-Happens automatically when new epoch starts:
-
-1. Vault processes end of day:
-   - Records play_balance at epoch end
-   - Moves play_balance back to reserve_balance
-   - Returns: end_of_day_balance
-
-2. House calculates profit/loss:
-   - If eod_balance > active_stake: profits = difference
-   - If eod_balance < active_stake: losses = difference
-
-3. Take house performance fee (✅ IMPLEMENTED in v2.1):
-   - House fee = profits * house_fee_bps / 10000
-   - House fee is collected in vault (can be claimed by house admin)
-   - Remaining profits go to stakers
-
-4. State processes end of day:
-   - Actualizes pending unstakes (with profit/loss)
-   - Processes pending stakes (become active)
-   - Saves historical data
-   - Resets for new epoch
-
-5. House attempts reactivation:
-   - If sufficient inactive stake exists: reactivate
-   - Moves funds from reserve to play balance
-   - House is ready for new epoch
-```
-
-**Key: Fully automated, no manual intervention needed.**
+Game developers create the games that run on OpenPlay houses. They:
+- Write game logic in Sui Move
+- Deploy game packages to Sui
+- Create game instances with specific parameters
+- Submit instances to house operators for whitelisting
+- Earn fees when their games are played
 
----
-
-## **Changes Needed**
-
-### **What to Add**
-
-
-1. **House admin fee mechanism:** ✅ COMPLETED (v2.1)
-   - ✅ Added `house_fee_bps` to House config (implemented as performance fee, default 20%)
-   - ✅ At epoch end: house fee is deducted from profits before distributing to stakers
-   - ✅ House fees accumulate in vault and can be claimed by house admin via `admin_claim_house_fees()`
-   - Note: Implemented as "house fee" or "performance fee" rather than "admin fee"
+**Flexibility**: Games can be:
+- Simple (coin flip, dice) or complex (slots, poker variants)
+- Provably fair using Sui's randomness
+- Customized with different parameters per instance
 
-2. **Package developer fee tracking:**
-   - Vault tracks: `collected_package_dev_fees` by address
-   - When processing transactions: read package_developer from game instance
-   - Accumulate fees by developer address
-   - Claim function: `claim_package_dev_fees()` (checks ctx.sender())
-
-3. **Instance creator fee tracking:**
-   - Vault tracks: `collected_instance_creator_fees` by address
-   - When processing transactions: read instance_creator from game instance
-   - Accumulate fees by creator address
-   - Claim function: `claim_instance_creator_fees()` (checks ctx.sender())
+**Note**: Currently, game fees go to the game instance owner (whoever deployed/whitelisted it). Future versions may support more granular fee attribution between package developers and instance creators.
 
-4. **Per-game fee configuration:**
-   - Instead of: `games_fee_bps: VecMap<ID, u64>`
-   - Use: `game_fee_configs: VecMap<ID, GameFeeConfig>`
-   - Where GameFeeConfig has: package_dev_fee_bps, instance_creator_fee_bps
-
-5. **Game instance attribution standard:**
-   - Game contracts should expose: package_developer and instance_creator addresses
-   - House reads these when processing transactions
-   - (Convention, not enforced by protocol)
-
-### **What to Remove**
-
-1. **Current referral system:**
-   - Remove: `referral_id: Option<ID>` parameter from transaction processing
-   - Remove: referral fee calculation and distribution
-   - Keep: referral module in codebase (for future player-to-player referrals)
-
-2. **Unclear operator concept:**
-   - Remove: any operator-specific code that's not the house admin
-   - Simplify: operator = house admin
-
-### **What to Keep**
-
-✅ All core mechanics (staking, profit/loss, epoch processing)
-✅ Registry and protocol fee structure
-✅ Capability-based security model
-✅ Vault separation (play vs reserve balance)
-✅ Game whitelisting mechanism
-✅ Balance manager system
-✅ Game statistics tracking
-
----
-
-## **MVP Path Forward**
-
-### **Phase 1: You Do Everything (Months 1-3)**
-
-**Setup:**
-- You create House A
-- You stake your capital
-- You write 2-3 game packages (CoinFlip, Dice, Crash)
-- You create instances from your packages
-- You whitelist on your house
-- You run operator website
-
-**Fee config:**
-- Protocol: 0%
-- Package dev: 10% (goes to you)
-- Instance creator: 2% (goes to you)
-- House admin: 5% (goes to you)
-- Stakers: 83% (including you)
-
-**Goal:** Prove the system works, generate volume, build reputation
-
-### **Phase 2: External Game Devs (Months 3-6)**
-
-**Onboarding:**
-- External devs publish game packages
-- You review and whitelist instances on YOUR house
-- Set fee splits: package_dev (them), instance_creator (them or you), admin (you)
-
-**Two approaches:**
-1. **Full package**: They write and deploy complete game contract
-2. **Frontend-only**: You write contract, they build custom UI/skin
-
-**Goal:** Prove incentive model works, grow game library
-
-### **Phase 3: Multiple Houses (Months 6-12)**
-
-**Expansion:**
-- Other operators create their houses
-- They whitelist games from community packages
-- Multiple houses compete for stakers and players
-
-**Ecosystem emerges:**
-- Game packages become valuable (earn from all houses)
-- Houses differentiate (conservative vs degen, different game selections)
-- Stakers choose houses based on returns and risk
-
-**Your role:**
-- Enable protocol fee (1-2%)
-- Focus on protocol maintenance
-- Let community build games
-
-### **Phase 4: Token Launch (Month 12+)**
-
-**Tokenomics:**
-- Launch $OPENPLAY token
-- Stakers earn protocol fees (from all houses)
-- Governance over protocol parameters
-- You transition to protocol development only
-
----
-
-## **Key Success Metrics**
-
-**MVP Success:**
-- 3+ games live and playable
-- 10+ active players
-- $10K+ total volume
-- 0 security incidents
-- 1+ external game developer onboarded
-
-**Ecosystem Success:**
-- 3+ external houses created
-- 10+ game packages published
-- 100+ active players across all houses
-- $100K+ total volume
-- Sustainable fees for all participants
-
----
-
-## **The Mental Model**
-
-Think of OpenPlay as:
-- **The protocol**: Like Uniswap (provides infrastructure)
-- **Houses**: Like liquidity pools (provide capital)
-- **Game packages**: Like trading pairs (provide functionality)
-- **Operators**: Like Uniswap front-ends (provide UX)
-
-**Everyone wins:**
-- Protocol earns from all houses
-- Package devs earn from all houses using their games
-- Instance creators earn from their specific instances
-- House admins earn from their house's success
-- Stakers earn from their chosen house
-
-**Result:** Self-sustaining ecosystem where incentives are aligned and value flows to contributors automatically.
+### Protocol (OpenPlay)
+
+The OpenPlay protocol provides the core infrastructure:
+- **Registry**: Tracks all houses, manages protocol fees, handles version control
+- **House Contracts**: Process transactions, manage stakes, distribute profits
+- **Vault System**: Securely stores and separates funds
+- **Balance Managers**: Enable secure player fund management
+
+**Protocol Fees**: A small fee (currently 0%, configurable up to 2%) is collected from all transactions to support protocol development and maintenance.
+
+## Fee Structure
+
+OpenPlay uses a multi-tier fee system that aligns incentives across all participants:
+
+### Transaction Fees (Per Bet)
+
+When a player places a bet, fees are deducted from the house edge:
+
+1. **Protocol Fee** (0-2%): Goes to OpenPlay protocol treasury
+2. **Game Fee** (configurable per game): Goes to the game instance owner
+3. **Remaining**: Goes to the house profit pool
+
+### House Performance Fee (Per Epoch)
+
+At the end of each profitable epoch:
+- A percentage of profits (configurable, default 20%) goes to the house operator
+- Remaining profits are distributed proportionally to all stakers
+
+**Example**:
+- House makes 1000 SUI profit in an epoch
+- House fee: 20% = 200 SUI → House operator
+- Remaining: 800 SUI → Distributed to stakers proportionally
+
+## Security & Trust
+
+### For Players
+
+- **Fund Control**: Players control their funds through Balance Managers - no one can access them without your permission
+- **Provably Fair**: Games use Sui's on-chain randomness - results are verifiable
+- **No Lock-in**: You can withdraw funds at any time, even if a house is paused
+- **Transparent**: All transactions are on-chain and auditable
+
+### For Stakers
+
+- **Proportional Sharing**: Profits and losses are shared proportionally - no preferential treatment
+- **Transparent Accounting**: All stake, profit, and loss calculations are on-chain
+- **No Lock-in**: You can unstake at any time (processed at end of epoch)
+- **House Control**: You choose which houses to stake in based on their game selection, fees, and track record
+
+### For Operators
+
+- **Full Control**: You control which games to whitelist and your fee structure
+- **No Fund Access**: You cannot directly access user funds - they're in shared objects with proper access controls
+- **Version Control**: The protocol can pause gameplay if needed, but user funds are never locked
+
+### Protocol-Level Protections
+
+- **Upgradeable During Development**: The protocol is upgradeable to fix bugs and add features quickly
+- **Pause Mechanism**: Can pause gameplay for security without locking user funds
+- **Version Control**: Registry tracks allowed package versions for safe upgrades
+- **Capability-Based Security**: All operations require proper capabilities - no single point of failure
+
+See [Upgrade Documentation](./upgrades.md) for details on how upgrades work and how user funds are protected.
+
+## Use Cases
+
+### For Players
+
+- **Provably Fair Gaming**: Play games where results are verifiable on-chain
+- **No KYC**: Participate without identity verification
+- **Instant Settlement**: Wins and losses are settled immediately
+- **Multiple Houses**: Choose from different houses with different game selections
+
+### For Stakers
+
+- **Passive Income**: Earn returns by providing liquidity to houses
+- **Diversification**: Stake in multiple houses to spread risk
+- **Transparent Returns**: See exactly how profits are calculated and distributed
+- **Flexible**: Stake and unstake based on house performance
+
+### For Operators
+
+- **Launch Your Casino**: Create a house and start accepting players
+- **Full Control**: Choose games, set fees, build your brand
+- **Competitive**: Compete with other houses for players and stakers
+- **Scalable**: As your house grows, attract more stakers and players
+
+### For Game Developers
+
+- **Publish Once, Earn Everywhere**: Deploy a game package that can be used by any house
+- **No Gatekeeping**: Submit your games to any house operator
+- **Fair Compensation**: Earn fees when your games are played
+- **Innovation**: Build new game types and mechanics
+
+## Technical Architecture
+
+### Core Components
+
+**Registry**: Central protocol registry that tracks all houses, manages protocol fees, and handles version control for safe upgrades.
+
+**House**: Shared objects that process bet/win transactions, manage whitelisted games, handle fee distribution, and manage staking.
+
+**Vault**: Stores all house assets, separating funds into:
+- **Reserve Balance**: Staked funds not currently in play
+- **Play Balance**: Funds actively used for game payouts
+- **Fee Balances**: Collected protocol, game, and house fees
+
+**Participation**: NFT-like objects that represent a user's stake in a house, tracking profit/loss over epochs.
+
+**Balance Manager**: Shared objects that hold player funds for gameplay, with delegatable PlayCaps for secure access control.
+
+**State**: Tracks house-level stake management, activation status, and epoch history.
+
+### Key Mechanics
+
+**Epoch-Based Profit/Loss**: Houses operate in epochs (~24 hours). At end of epoch, profits/losses are calculated and distributed proportionally to stakers.
+
+**House Activation**: Houses must reach minimum stake threshold to activate. When active, funds move from reserve to play balance for gameplay.
+
+**Capability-Based Security**: Uses Sui capabilities (HouseAdminCap, HouseTransactionCap, PlayCap, etc.) for fine-grained access control.
+
+**Game Whitelisting**: House admins whitelist game instances (identified by UID) to allow them to process transactions.
+
+**Balance Separation**: Player funds (Balance Manager) are separate from house funds (Vault), ensuring players can always access their funds.
+
+## Getting Started
+
+### As a Player
+
+1. Create a Balance Manager to hold your gameplay funds
+2. Deposit SUI into your Balance Manager
+3. Visit any OpenPlay house frontend
+4. Connect your wallet and start playing
+
+### As a Staker
+
+1. Browse available houses (check game selection, fees, historical returns)
+2. Create a Participation for the house you want to stake in
+3. Stake SUI tokens
+4. Monitor your returns each epoch
+5. Claim profits or unstake when ready
+
+### As an Operator
+
+1. Create a House with your desired configuration
+2. Whitelist game instances you trust
+3. Set your fee structure
+4. Build or use a frontend to attract players
+5. Monitor house performance and adjust as needed
+
+### As a Game Developer
+
+1. Write your game logic in Sui Move
+2. Deploy your game package to Sui
+3. Create game instances with your desired parameters
+4. Submit instances to house operators for whitelisting
+5. Earn fees when your games are played
+
+## The Future of OpenPlay
+
+OpenPlay is designed to evolve into a fully decentralized, community-driven ecosystem:
+
+- **Multiple Houses**: Competition between houses drives innovation and better returns
+- **Rich Game Library**: Community-developed games create diverse offerings
+- **Proven Track Records**: Houses build reputation through transparent performance
+- **Sustainable Economics**: Aligned incentives ensure long-term viability
+
+The protocol is currently in active development. Some features discussed (like granular fee attribution between package developers and instance creators) may be implemented in future versions based on community needs and feedback.
+
+## Learn More
+
+- [Balance System Documentation](./balances.md) - Understand how funds flow through the system
+- [Balance Manager Documentation](./balance-manager.md) - Learn about player fund management
+- [Upgrade Documentation](./upgrades.md) - Understand protocol upgrades and security
+- [Security Audit Report](../audit/SECURITY_AUDIT_REPORT_OPUS_4.5.md) - Detailed security analysis
+
+## Summary
+
+OpenPlay is **infrastructure for decentralized gambling**. It enables:
+
+- **Players** to enjoy provably fair games with full control of their funds
+- **Stakers** to earn returns by providing liquidity to houses
+- **Operators** to launch and operate their own casinos
+- **Developers** to create and monetize games
+
+All built on Sui blockchain with transparency, security, and permissionless access at its core.

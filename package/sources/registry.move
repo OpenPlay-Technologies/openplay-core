@@ -1,7 +1,7 @@
 /// Registry holds all created games.
 module openplay_core::registry;
 
-use openplay_core::core_constants::current_version;
+use openplay_core::core_constants::{current_version, max_bps};
 use openplay_core::game_stats::{Self, GameStatistics};
 use sui::event::emit;
 use sui::table::{Self, Table};
@@ -13,6 +13,7 @@ const EVersionAlreadyAllowed: u64 = 2;
 const EVersionAlreadyDisabled: u64 = 3;
 const EStatsAlreadyCreated: u64 = 4;
 const EStatsNotAvailable: u64 = 5;
+const EInvalidFeeConfiguration: u64 = 6;
 
 // === Structs ===
 /// Central registry that tracks all Houses, manages protocol fees, and version control.
@@ -64,6 +65,12 @@ public struct HouseRegisteredEvent has copy, drop {
 // === Public-Package Functions ===
 /// Registers a new House in the Registry.
 /// Validates that the current package version is allowed.
+///
+/// # Version Check
+/// This function performs a version check to prevent new houses from being registered
+/// when the package version is disabled. Note that this only affects NEW house registrations;
+/// existing houses continue to operate, and fund operations (stake/unstake/claim) are
+/// never blocked by version checks.
 public(package) fun register_house(self: &mut Registry, house_id: ID) {
     self.assert_version();
     self.houses.push_back(house_id);
@@ -76,6 +83,18 @@ public(package) fun register_house(self: &mut Registry, house_id: ID) {
 
 // === Public-View ===
 /// Returns the protocol fee in basis points.
+///
+/// # Version Check
+/// **IMPORTANT**: This function performs a registry version check that can BLOCK GAMEPLAY.
+/// If the current package version is not allowed in the registry, this function will abort,
+/// which will prevent transaction processing from proceeding. This is intentional - version
+/// checks are used to pause gameplay when needed, but note that staking/unstaking operations
+/// do NOT call this function, ensuring user funds can never be paused.
+///
+/// # Usage
+/// This function is called during transaction processing (`tx_admin_process_transactions_v2`)
+/// to calculate protocol fees. If a version is disabled, gameplay will be blocked, but users
+/// can still stake, unstake, and claim their funds.
 public fun protocol_fee_bps(self: &Registry): u64 {
     self.assert_version();
     self.protocol_fee_bps
@@ -110,11 +129,13 @@ public fun init_stats(self: &mut Registry, game_id: &UID, ctx: &mut TxContext): 
 // === Admin Functions ===
 /// Updates the protocol fee in basis points.
 /// Can only be called by the OpenPlay admin.
+/// Aborts if the fee is >= 100% (10000 basis points).
 public fun update_protocol_fee_bps(
     self: &mut Registry,
     _cap: &OpenPlayAdminCap,
     protocol_fee_bps: u64,
 ) {
+    assert!(protocol_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let old_fee_bps = self.protocol_fee_bps;
     self.protocol_fee_bps = protocol_fee_bps;
 
@@ -170,6 +191,18 @@ fun init(_: REGISTRY, ctx: &mut TxContext) {
 
 /// Asserts that the current package version is allowed to interact with the Registry.
 /// Aborts if the version is disabled.
+///
+/// # Version Control Strategy
+/// This function is used to control access to registry-dependent operations:
+/// - **Gameplay operations** (transaction processing): Version check is performed via `protocol_fee_bps()`
+///   to allow pausing gameplay when needed
+/// - **Fund operations** (staking/unstaking/claiming): NO version check is performed, ensuring
+///   user funds can NEVER be paused or locked, even if a version is disabled
+/// - **House registration**: Version check is performed to prevent new houses from being created
+///   with disabled versions
+///
+/// This design ensures that while gameplay can be paused for security or upgrade purposes,
+/// users always retain the ability to manage their funds (stake, unstake, claim).
 fun assert_version(self: &Registry) {
     let package_version = current_version();
     assert!(self.allowed_versions.contains(&package_version), EPackageVersionDisabled);

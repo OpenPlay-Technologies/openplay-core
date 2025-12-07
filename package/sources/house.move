@@ -126,6 +126,30 @@ public struct HouseFeesClaimedEvent has copy, drop {
     amount: u64,
 }
 
+/// Event emitted when stake is added to a participation.
+public struct StakeAddedEvent has copy, drop {
+    house_id: ID,
+    participation_id: ID,
+    amount: u64,
+    pending: bool,
+}
+
+/// Event emitted when stake is removed from a participation.
+public struct StakeRemovedEvent has copy, drop {
+    house_id: ID,
+    participation_id: ID,
+    amount: u64,
+    pending_stake_removed: u64,
+}
+
+/// Event emitted when balances are settled between the vault and a balance manager.
+public struct SettlementEvent has copy, drop {
+    house_id: ID,
+    balance_manager_id: ID,
+    amount_in: u64,
+    amount_out: u64,
+}
+
 // === Public-View Functions ===
 /// Returns the ID of the House.
 public fun id(self: &House): ID {
@@ -205,6 +229,12 @@ public fun new_participation(self: &House, ctx: &mut TxContext): Participation {
 
 /// Stake money in the protocol to participate in the house winnings.
 /// The stake is first added to the account's inactive stake, and is only activated in the next epoch.
+///
+/// # Version Control
+/// **IMPORTANT**: This function does NOT perform any registry version checks. This is intentional
+/// to ensure that user funds can NEVER be paused or locked, even if a package version is disabled
+/// in the registry. Users can always stake, unstake, and claim their funds regardless of registry
+/// version status. Only gameplay operations (transaction processing) are subject to version checks.
 public fun stake(
     self: &mut House,
     participation: &mut Participation,
@@ -216,14 +246,25 @@ public fun stake(
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
     self.process_end_of_day(ctx);
 
+    let stake_amount = stake.value();
+    let is_active = self.state.is_active();
+
     // Process the stake in the state
-    self.state.process_stake(stake.value(), ctx);
+    self.state.process_stake(stake_amount, ctx);
 
     // Add funds to the participation
-    participation.add_stake(stake.value(), self.state.is_active(), ctx);
+    participation.add_stake(stake_amount, is_active, ctx);
 
     // Move funds to the vault
     self.vault.deposit(stake.into_balance());
+
+    // Event
+    emit(StakeAddedEvent {
+        house_id: self.id(),
+        participation_id: participation.id(),
+        amount: stake_amount,
+        pending: is_active,
+    });
 
     // Try to activate the house
     self.activate_if_possible(ctx);
@@ -269,6 +310,12 @@ public fun update_participation_with_limit(
 }
 
 /// Withdraws the stake from the current game. This only goes into effect in the next epoch.
+///
+/// # Version Control
+/// **IMPORTANT**: This function does NOT perform any registry version checks. This is intentional
+/// to ensure that user funds can NEVER be paused or locked, even if a package version is disabled
+/// in the registry. Users can always stake, unstake, and claim their funds regardless of registry
+/// version status. Only gameplay operations (transaction processing) are subject to version checks.
 public fun unstake_v2(
     self: &mut House,
     participation: &mut Participation,
@@ -289,10 +336,24 @@ public fun unstake_v2(
 
     // Process the unstake in the history
     self.state.process_unstake(remaining_amount, pending_stake_removed, ctx);
+
+    // Event
+    emit(StakeRemovedEvent {
+        house_id: self.id(),
+        participation_id: participation.id(),
+        amount: remaining_amount,
+        pending_stake_removed,
+    });
 }
 
 /// Claims all claimable balance from a participation.
 /// Returns the claimable amount as a Coin<SUI>.
+///
+/// # Version Control
+/// **IMPORTANT**: This function does NOT perform any registry version checks. This is intentional
+/// to ensure that user funds can NEVER be paused or locked, even if a package version is disabled
+/// in the registry. Users can always stake, unstake, and claim their funds regardless of registry
+/// version status. Only gameplay operations (transaction processing) are subject to version checks.
 public fun claim_all(
     self: &mut House,
     participation: &mut Participation,
@@ -324,6 +385,14 @@ public fun borrow_tx_cap(self: &House, game_id: &mut UID): HouseTransactionCap {
 /// Processes transactions for a game using a balance manager.
 /// Handles fee calculation, balance settlement, and statistics updates.
 /// Requires a valid transaction cap and play cap.
+///
+/// # Version Check
+/// **IMPORTANT**: This function calls `registry.protocol_fee_bps()` which performs a registry
+/// version check. If the current package version is disabled in the registry, this function
+/// will abort, effectively pausing gameplay. This is intentional - version checks allow the
+/// protocol to pause gameplay for security or upgrade purposes. However, note that fund
+/// operations (stake/unstake/claim) do NOT perform version checks, ensuring user funds can
+/// never be paused.
 public fun tx_admin_process_transactions_v2(
     self: &mut House,
     registry: &Registry,
@@ -345,6 +414,7 @@ public fun tx_admin_process_transactions_v2(
     let play_proof = balance_manager.generate_proof_as_player(play_cap, ctx);
 
     let game_fee_bps = self.game_fee_bps(&game_id);
+    // Version check happens here - if version is disabled, this will abort and block gameplay
     let protocol_fee_bps = registry.protocol_fee_bps();
 
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
@@ -362,6 +432,14 @@ public fun tx_admin_process_transactions_v2(
 
     // Settle the balances in vault
     self.vault.settle_balance_manager(credit_balance, debit_balance, balance_manager, &play_proof);
+
+    // Event
+    emit(SettlementEvent {
+        house_id: self.id(),
+        balance_manager_id: balance_manager.id(),
+        amount_in: debit_balance,
+        amount_out: credit_balance,
+    });
 
     // Process fees
     self.vault.process_game_fee(game_id, game_fee);
@@ -386,6 +464,14 @@ public fun tx_admin_process_transactions_v2(
 /// Processes transactions for a game without requiring a pre-existing balance manager.
 /// Creates a temporary balance manager, processes transactions, and returns remaining funds.
 /// Useful for games that don't maintain persistent balance managers.
+///
+/// # Version Check
+/// **IMPORTANT**: This function calls `registry.protocol_fee_bps()` which performs a registry
+/// version check. If the current package version is disabled in the registry, this function
+/// will abort, effectively pausing gameplay. This is intentional - version checks allow the
+/// protocol to pause gameplay for security or upgrade purposes. However, note that fund
+/// operations (stake/unstake/claim) do NOT perform version checks, ensuring user funds can
+/// never be paused.
 public fun tx_admin_process_transactions_v2_no_bm(
     self: &mut House,
     registry: &Registry,
@@ -409,6 +495,7 @@ public fun tx_admin_process_transactions_v2_no_bm(
     let play_proof = balance_manager.generate_proof_as_owner(&bm_cap, ctx);
 
     let game_fee_bps = self.game_fee_bps(&game_id);
+    // Version check happens here - if version is disabled, this will abort and block gameplay
     let protocol_fee_bps = registry.protocol_fee_bps();
 
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
@@ -428,6 +515,14 @@ public fun tx_admin_process_transactions_v2_no_bm(
     self
         .vault
         .settle_balance_manager(credit_balance, debit_balance, &mut balance_manager, &play_proof);
+
+    // Event
+    emit(SettlementEvent {
+        house_id: self.id(),
+        balance_manager_id: balance_manager.id(),
+        amount_in: debit_balance,
+        amount_out: credit_balance,
+    });
 
     // Process fees
     self.vault.process_game_fee(game_id, game_fee);
