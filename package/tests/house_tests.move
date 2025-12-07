@@ -1096,6 +1096,85 @@ public fun process_transactions_different_game_fees() {
 }
 
 #[test]
+public fun admin_remove_game_fee() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id1 = object::id_from_address(@0x11);
+    let game_id2 = object::id_from_address(@0x12);
+
+    // Create a new house
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+
+    // Set game fees
+    house.admin_set_game_fee(&admin_cap, game_id1, 100);
+    house.admin_set_game_fee(&admin_cap, game_id2, 150);
+
+    // Verify fees are set
+    assert_eq!(house.game_fee_bps(&game_id1), 100);
+    assert_eq!(house.game_fee_bps(&game_id2), 150);
+
+    // Remove game_id1 fee
+    house.admin_remove_game_fee(&admin_cap, &game_id1);
+
+    // Verify game_id1 fee is removed (returns 0)
+    assert_eq!(house.game_fee_bps(&game_id1), 0);
+    // Verify game_id2 fee still exists
+    assert_eq!(house.game_fee_bps(&game_id2), 150);
+
+    // Remove game_id2 fee
+    house.admin_remove_game_fee(&admin_cap, &game_id2);
+
+    // Verify game_id2 fee is also removed
+    assert_eq!(house.game_fee_bps(&game_id2), 0);
+
+    destroy(house);
+    destroy(admin_cap);
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = openplay_core::house::EGameFeeNotFound)]
+public fun admin_remove_game_fee_not_found() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(@0x11);
+
+    // Create a new house
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+
+    // Try to remove a game fee that doesn't exist (should abort)
+    house.admin_remove_game_fee(&admin_cap, &game_id);
+
+    destroy(house);
+    destroy(admin_cap);
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = openplay_core::house::EInvalidAdminCap)]
+public fun admin_remove_game_fee_wrong_cap() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(@0x11);
+
+    // Create two houses
+    let (mut house1, admin_cap1) = default_house(scenario.ctx());
+    let (house2, admin_cap2) = default_house(scenario.ctx());
+
+    // Set a game fee on house1
+    house1.admin_set_game_fee(&admin_cap1, game_id, 100);
+
+    // Try to remove the fee from house1 using house2's admin cap (should abort)
+    house1.admin_remove_game_fee(&admin_cap2, &game_id);
+
+    destroy(house1);
+    destroy(house2);
+    destroy(admin_cap1);
+    destroy(admin_cap2);
+    scenario.end();
+}
+
+#[test]
 public fun process_transactions_no_bm() {
     let addr = @0xa;
     let mut scenario = begin(addr);

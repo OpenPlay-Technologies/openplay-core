@@ -94,6 +94,12 @@ public struct BalanceManagerDestroyedEvent has copy, drop {
     balance_manager_cap_id: ID,
 }
 
+/// Event emitted when all PlayCaps are pruned from the allow list.
+public struct PlayCapAllowListPrunedEvent has copy, drop {
+    balance_manager_id: ID,
+    pruned_count: u64,
+}
+
 // === Public-View Functions ===
 /// Returns the id of the balance_manager.
 public fun id(self: &BalanceManager): ID {
@@ -123,6 +129,11 @@ public fun player(proof: &PlayProof): address {
 /// Gets the current amount on the balance.
 public fun balance(self: &BalanceManager): u64 {
     self.balance.value()
+}
+
+/// Gets the number of PlayCaps in the allow list.
+public fun allow_list_length(self: &BalanceManager): u64 {
+    self.tx_allow_listed.length()
 }
 
 // === Public-Mutative Functions ===
@@ -190,6 +201,21 @@ public fun revoke_play_cap(self: &mut BalanceManager, cap: &BalanceManagerCap, p
     emit(PlayCapRevokedEvent {
         balance_manager_id: self.id(),
         play_cap_id: *player_cap_id,
+    });
+}
+
+/// Prune the allow list, removing all PlayCap IDs and effectively revoking all PlayCaps in circulation.
+/// Only the owner can call this function.
+/// This clears the entire tx_allow_listed, making all existing PlayCaps unable to generate proofs.
+public fun prune_allow_list(self: &mut BalanceManager, cap: &BalanceManagerCap) {
+    self.validate_owner(cap);
+
+    let pruned_count = self.tx_allow_listed.length();
+    self.tx_allow_listed = vec_set::empty();
+
+    emit(PlayCapAllowListPrunedEvent {
+        balance_manager_id: self.id(),
+        pruned_count,
     });
 }
 

@@ -211,3 +211,94 @@ public fun destroy_play_cap_and_revoke_wrong_manager() {
 
     abort 0
 }
+
+#[test]
+public fun prune_allow_list_ok() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+
+    // Verify initial allow list is empty
+    assert!(balance_manager.allow_list_length() == 0, 0);
+
+    // Mint multiple play caps
+    let play_cap1 = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+    let play_cap2 = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+    let play_cap3 = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Verify allow list has 3 play caps
+    assert!(balance_manager.allow_list_length() == 3, 1);
+
+    // Verify they all work before pruning
+    let _play_proof1 = balance_manager.generate_proof_as_player(&play_cap1, scenario.ctx());
+    let _play_proof2 = balance_manager.generate_proof_as_player(&play_cap2, scenario.ctx());
+    let _play_proof3 = balance_manager.generate_proof_as_player(&play_cap3, scenario.ctx());
+
+    // Prune the allow list
+    balance_manager.prune_allow_list(&balance_manager_cap);
+
+    // Verify the allow list is now empty
+    assert!(balance_manager.allow_list_length() == 0, 2);
+
+    // Verify that new play caps can still be minted
+    let play_cap4 = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+    assert!(balance_manager.allow_list_length() == 1, 3);
+    let _play_proof4 = balance_manager.generate_proof_as_player(&play_cap4, scenario.ctx());
+
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap1);
+    destroy(play_cap2);
+    destroy(play_cap3);
+    destroy(play_cap4);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = balance_manager::EInvalidPlayer)]
+public fun prune_allow_list_revokes_all_caps() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+
+    // Mint a play cap
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Verify allow list has 1 play cap
+    assert!(balance_manager.allow_list_length() == 1, 0);
+
+    // Verify it works before pruning
+    let _play_proof = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
+
+    // Prune the allow list
+    balance_manager.prune_allow_list(&balance_manager_cap);
+
+    // Verify the allow list is now empty
+    assert!(balance_manager.allow_list_length() == 0, 1);
+
+    // Try to use the play cap after pruning - should fail
+    let _play_proof2 = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
+
+    abort 0
+}
+
+#[test, expected_failure(abort_code = balance_manager::EInvalidOwner)]
+public fun prune_allow_list_wrong_cap() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+
+    let (mut balance_manager1, balance_manager_cap1) = balance_manager::new(scenario.ctx());
+    let (mut _balance_manager2, balance_manager_cap2) = balance_manager::new(scenario.ctx());
+
+    // Mint a play cap for balance_manager1
+    let _play_cap = balance_manager1.mint_play_cap(&balance_manager_cap1, scenario.ctx());
+
+    // Verify allow list has 1 play cap
+    assert!(balance_manager1.allow_list_length() == 1, 0);
+
+    // Try to prune with wrong cap - should fail
+    balance_manager1.prune_allow_list(&balance_manager_cap2);
+
+    abort 0
+}

@@ -30,9 +30,12 @@ const EInvalidFeeConfiguration: u64 = 10;
 const EUnauthorizedGameId: u64 = 11;
 const ETxCapNotAllowed: u64 = 12;
 const EInvalidGameStats: u64 = 13;
+const EMaxGamesReached: u64 = 14;
+const EGameFeeNotFound: u64 = 15;
 
 // === Constants ===
 const MAX_TX_CAPS: u64 = 1000;
+const MAX_GAMES: u64 = 500;
 
 // === Structs ===
 /// One-time witness type for the House module.
@@ -84,6 +87,12 @@ public struct GameFeeUpdatedEvent has copy, drop {
     house_id: ID,
     game_id: ID,
     game_fee_bps: u64,
+}
+
+/// Event emitted when a game's fee is removed.
+public struct GameFeeRemovedEvent has copy, drop {
+    house_id: ID,
+    game_id: ID,
 }
 
 /// Event emitted when transactions are processed by a game.
@@ -651,6 +660,12 @@ public fun admin_set_game_fee(
 
     assert!(game_fee_bps < max_bps(), EInvalidFeeConfiguration);
 
+    // Check if adding a new game would exceed the maximum
+    // Only check if this is a new game (not updating an existing one)
+    if (!vec_map::contains(&self.games_fee_bps, &game_id)) {
+        assert!(self.games_fee_bps.length() < MAX_GAMES, EMaxGamesReached);
+    };
+
     self.games_fee_bps.insert(game_id, game_fee_bps);
 
     // Event
@@ -658,6 +673,28 @@ public fun admin_set_game_fee(
         house_id: self.id(),
         game_id: game_id,
         game_fee_bps: game_fee_bps,
+    })
+}
+
+/// Removes the fee configuration for the provided game_id.
+public fun admin_remove_game_fee(
+    self: &mut House,
+    admin_cap: &HouseAdminCap,
+    game_id: &ID,
+) {
+    // Check if the admin_cap is valid
+    self.assert_valid_admin_cap(admin_cap);
+
+    // Check if the game fee exists
+    assert!(vec_map::contains(&self.games_fee_bps, game_id), EGameFeeNotFound);
+
+    // Remove the entry
+    let (_removed_game_id, _removed_fee) = vec_map::remove(&mut self.games_fee_bps, game_id);
+
+    // Event
+    emit(GameFeeRemovedEvent {
+        house_id: self.id(),
+        game_id: *game_id,
     })
 }
 

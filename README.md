@@ -52,6 +52,7 @@ See our [Vision Document](./docs/vision.md) for detailed information on how to p
 - **[Balance System](./docs/balances.md)** - Understanding all balance types in the protocol
 - **[Balance Manager](./docs/balance-manager.md)** - How player funds are managed securely
 - **[Upgrades & Security](./docs/upgrades.md)** - Protocol upgrade process and fund protection
+- **[Game Whitelisting](./docs/game-whitelisting.md)** - Security requirements for whitelisting games
 
 ### Technical Documentation
 
