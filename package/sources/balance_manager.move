@@ -82,6 +82,12 @@ public struct PlayCapRevokedEvent has copy, drop {
     play_cap_id: ID,
 }
 
+/// Event emitted when a PlayCap is destroyed.
+public struct PlayCapDestroyedEvent has copy, drop {
+    balance_manager_id: ID,
+    play_cap_id: ID,
+}
+
 // === Public-View Functions ===
 /// Returns the id of the balance_manager.
 public fun id(self: &BalanceManager): ID {
@@ -179,6 +185,52 @@ public fun revoke_play_cap(self: &mut BalanceManager, cap: &BalanceManagerCap, p
         balance_manager_id: self.id(),
         play_cap_id: *player_cap_id,
     });
+}
+
+/// Destroys a `PlayCap`. This function always works, even if the associated BalanceManager no longer exists.
+/// The PlayCap owner can call this to permanently destroy their PlayCap.
+public fun destroy_play_cap(play_cap: PlayCap) {
+    let PlayCap { id, balance_manager_id } = play_cap;
+    let play_cap_id = id.to_inner();
+
+    emit(PlayCapDestroyedEvent {
+        balance_manager_id,
+        play_cap_id,
+    });
+
+    object::delete(id);
+}
+
+/// Destroys a `PlayCap` and revokes it from the BalanceManager's allow list if it's still present.
+/// This is the recommended way to destroy a PlayCap when the BalanceManager still exists,
+/// as it ensures the PlayCap is removed from the allow list.
+/// The PlayCap will be destroyed even if it's not in the allow list.
+public fun destroy_play_cap_and_revoke(
+    play_cap: PlayCap,
+    balance_manager: &mut BalanceManager,
+) {
+    let play_cap_id = cap_id(&play_cap);
+    let balance_manager_id = cap_balance_manager_id(&play_cap);
+
+    // Verify that the PlayCap belongs to this BalanceManager
+    assert!(balance_manager.id() == balance_manager_id, EInvalidPlayer);
+
+    // Remove from allow list if present (no error if not present)
+    if (balance_manager.tx_allow_listed.contains(&play_cap_id)) {
+        balance_manager.tx_allow_listed.remove(&play_cap_id);
+        emit(PlayCapRevokedEvent {
+            balance_manager_id,
+            play_cap_id,
+        });
+    };
+
+    // Destroy the PlayCap (extract fields and delete)
+    let PlayCap { id, balance_manager_id: _ } = play_cap;
+    emit(PlayCapDestroyedEvent {
+        balance_manager_id,
+        play_cap_id,
+    });
+    object::delete(id);
 }
 
 /// Generate a `PlayProof` by the owner.

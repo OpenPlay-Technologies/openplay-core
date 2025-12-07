@@ -153,3 +153,61 @@ public fun revoked_play_cap() {
 
     abort 0
 }
+
+#[test]
+public fun destroy_play_cap_ok() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Destroy the PlayCap directly - this should always work
+    balance_manager::destroy_play_cap(play_cap);
+
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    scenario.end();
+}
+
+#[test]
+public fun destroy_play_cap_and_revoke_ok() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+
+    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
+
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Verify it works before destruction
+    let _play_proof = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
+
+    // Destroy and revoke - this should remove it from the allow list and destroy it
+    balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager);
+
+    // Create a new play cap to verify balance manager still works
+    let play_cap2 = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+    let _play_proof2 = balance_manager.generate_proof_as_player(&play_cap2, scenario.ctx());
+
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap2);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = balance_manager::EInvalidPlayer)]
+public fun destroy_play_cap_and_revoke_wrong_manager() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+
+    let (mut balance_manager1, balance_manager_cap1) = balance_manager::new(scenario.ctx());
+    let (mut balance_manager2, _balance_manager_cap2) = balance_manager::new(scenario.ctx());
+
+    let play_cap = balance_manager1.mint_play_cap(&balance_manager_cap1, scenario.ctx());
+
+    // Try to destroy with wrong balance manager - should fail
+    balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager2);
+
+    abort 0
+}
