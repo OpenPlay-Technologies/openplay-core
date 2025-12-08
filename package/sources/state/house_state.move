@@ -14,6 +14,7 @@ use sui::table::{Self, Table};
 /// Maintains the global state of a House, tracking accounts, stake, volumes, and history.
 /// Processes transactions, manages stake activation/deactivation, and calculates profit/loss sharing.
 public struct State has store {
+    house_id: ID,
     accounts: Table<ID, Account>,
     epoch: u64, // The current epoch of the state
     is_active: bool, // Boolean that indicates whether a cycle is currently active
@@ -48,11 +49,13 @@ public struct EndOfDay has copy, drop, store {
 
 /// Event emitted when a House is activated (has sufficient stake).
 public struct HouseActivatedEvent has copy, drop {
+    house_id: ID,
     active_stake: u64,
 }
 
 /// Event emitted when end-of-day processing completes for a State.
 public struct StateEndOfDayProcessedEvent has copy, drop {
+    house_id: ID,
     epoch: u64,
     profits: u64,
     losses: u64,
@@ -323,6 +326,7 @@ public(package) fun process_end_of_day(
 
     // Emit event
     emit(StateEndOfDayProcessedEvent {
+        house_id: self.house_id,
         epoch: epoch,
         profits: profits,
         losses: losses,
@@ -333,8 +337,9 @@ public(package) fun process_end_of_day(
 }
 
 /// Creates a new State with all values initialized to zero and epoch set to current epoch.
-public(package) fun new(ctx: &mut TxContext): State {
+public(package) fun new(house_id: ID, ctx: &mut TxContext): State {
     State {
+        house_id,
         accounts: table::new(ctx),
         epoch: ctx.epoch(),
         is_active: false,
@@ -598,6 +603,7 @@ fun activate(self: &mut State) {
 
     // Event
     emit(HouseActivatedEvent {
+        house_id: self.house_id,
         active_stake: self.active_stake,
     })
 }

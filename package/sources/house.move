@@ -159,6 +159,12 @@ public struct SettlementEvent has copy, drop {
     amount_out: u64,
 }
 
+/// Event emitted when the performance fee of the house is processed.
+public struct HouseFeeProcessedEvent has copy, drop {
+    house_id: ID,
+    amount: u64,
+}
+
 // === Public-View Functions ===
 /// Returns the ID of the House.
 public fun id(self: &House): ID {
@@ -677,11 +683,7 @@ public fun admin_set_game_fee(
 }
 
 /// Removes the fee configuration for the provided game_id.
-public fun admin_remove_game_fee(
-    self: &mut House,
-    admin_cap: &HouseAdminCap,
-    game_id: &ID,
-) {
+public fun admin_remove_game_fee(self: &mut House, admin_cap: &HouseAdminCap, game_id: &ID) {
     // Check if the admin_cap is valid
     self.assert_valid_admin_cap(admin_cap);
 
@@ -710,12 +712,14 @@ public fun openplay_admin_new_house(
 ): (House, HouseAdminCap) {
     assert!(house_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let admin_cap_id = object::new(ctx);
+    let house_id_obj = object::new(ctx);
+    let house_id = house_id_obj.to_inner();
     let house = House {
-        id: object::new(ctx),
+        id: house_id_obj,
         admin_cap_id: admin_cap_id.to_inner(),
         private,
-        vault: vault::empty(ctx),
-        state: house_state::new(ctx),
+        vault: vault::empty(house_id, ctx),
+        state: house_state::new(house_id, ctx),
         min_activation_balance,
         house_fee_bps,
         games_fee_bps: vec_map::empty(),
@@ -796,6 +800,7 @@ fun process_end_of_day(self: &mut House, ctx: &TxContext) {
         // Store house fee in vault
         if (house_fee > 0) {
             self.vault.process_house_fee(house_fee);
+            emit(HouseFeeProcessedEvent { house_id: self.id(), amount: house_fee });
         };
 
         // Process the profits / losses with the state (after house fee deduction)
@@ -874,12 +879,14 @@ public fun new_for_testing(
 ): (House, HouseAdminCap) {
     assert!(house_fee_bps < max_bps(), EInvalidFeeConfiguration);
     let admin_cap_id = object::new(ctx);
+    let house_id_obj = object::new(ctx);
+    let house_id = house_id_obj.to_inner();
     let house = House {
-        id: object::new(ctx),
+        id: house_id_obj,
         admin_cap_id: admin_cap_id.to_inner(),
         private,
-        vault: vault::empty(ctx),
-        state: house_state::new(ctx),
+        vault: vault::empty(house_id, ctx),
+        state: house_state::new(house_id, ctx),
         min_activation_balance,
         house_fee_bps,
         games_fee_bps: vec_map::empty(),

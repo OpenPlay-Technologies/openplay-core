@@ -14,7 +14,8 @@ public fun deposit_withdraw_ok() {
     let mut scenario = begin(addr);
 
     // Create empty vault
-    let mut vault = vault::empty(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut vault = vault::empty(house_id, scenario.ctx());
     assert!(vault.reserve_balance() == 0);
 
     // Deposit 100
@@ -51,7 +52,8 @@ public fun fund_play_balance_ok() { let addr = @0xA; let mut scenario = begin(ad
         // Initialize balance manager with 100 MIST
 
         // Create empty vault
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         assert!(vault.reserve_balance() == 0);
 
         // Fund vault
@@ -70,7 +72,8 @@ public fun fund_play_balance_ok() { let addr = @0xA; let mut scenario = begin(ad
 #[test, expected_failure(abort_code = vault::EInsufficientFunds)]
 public fun activate_not_enough_funds() { let addr = @0xA; let mut scenario = begin(addr); {
         // Create empty vault
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         assert!(vault.reserve_balance() == 0);
 
         // Fund vault
@@ -92,7 +95,8 @@ public fun settle_balance_manager_gameplay_ok() { let addr = @0xA; let mut scena
         balance_manager.deposit_with_proof(&proof, deposit_balance);
 
         // Create empty vault
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         vault.fund_play_balance(0);
         assert!(vault.play_balance() == 0);
 
@@ -128,7 +132,8 @@ public fun settle_balance_manager_insufficient_funds_bm() {
         balance_manager.deposit_with_proof(&proof, deposit_balance);
 
         // Create empty vault
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         assert!(vault.play_balance() == 0);
         vault.fund_play_balance(0);
 
@@ -148,7 +153,8 @@ public fun settle_balance_manager_insufficient_funds_vault() {
         let proof = balance_manager.generate_proof_as_owner(&balance_manager_cap, scenario.ctx());
 
         // Create empty vault
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         vault.fund_play_balance(0);
         assert!(vault.play_balance() == 0);
 
@@ -166,7 +172,8 @@ public fun process_fees_ok() {
     let mut scenario = begin(addr);
     {
         // Create and fund vault with 100 MIST
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         vault.fund_play_balance_for_testing(100, scenario.ctx());
 
         // Process fees
@@ -188,7 +195,8 @@ public fun process_protocol_fees_fail() {
     let mut scenario = begin(addr);
     {
         // Create and fund vault with 100 MIST
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         vault.fund_play_balance_for_testing(100, scenario.ctx());
 
         // Process fees
@@ -206,7 +214,8 @@ public fun process_game_fees_fail() {
     let mut scenario = begin(addr);
     {
         // Create and fund vault with 100 MIST
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         vault.fund_play_balance_for_testing(100, scenario.ctx());
 
         // Process fees
@@ -224,7 +233,8 @@ public fun end_of_day_ok() {
     let mut scenario = begin(addr);
     {
         // Fund reserve balance with 150 MIST
-        let mut vault = vault::empty(scenario.ctx());
+        let house_id = object::id_from_address(@0x0);
+        let mut vault = vault::empty(house_id, scenario.ctx());
         vault.fund_reserve_balance_for_testing(150, scenario.ctx());
         assert!(vault.epoch() == scenario.ctx().epoch());
         assert!(vault.play_balance() == 0); // Game is not funded yet

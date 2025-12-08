@@ -16,7 +16,8 @@ public fun transactions_process_ok() {
     let mut scenario = begin(addr);
 
     // Initialize state and balance manager
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
     let (bm, bm_cap) = balance_manager::new(scenario.ctx());
 
     // Activate the state so it can process transactions
@@ -55,7 +56,8 @@ public fun stake_unstake_tests() {
     let mut scenario = begin(addr);
 
     // Create empty history
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Stake 10
     state.process_stake(10, scenario.ctx());
@@ -106,7 +108,8 @@ public fun unstake_too_much() {
     let addr = @0xa;
     let mut scenario = begin(addr);
 
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
     state.process_stake(100, scenario.ctx());
     state.process_unstake(150, 0, scenario.ctx());
 
@@ -119,7 +122,8 @@ public fun end_of_day_empty() {
     let mut scenario = begin(addr);
 
     // Create empty state
-    let state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let state = house_state::new(house_id, scenario.ctx());
     state.end_of_day_for_epoch(0);
 
     abort 0
@@ -131,7 +135,8 @@ public fun end_of_day_available() {
     let mut scenario = begin(addr);
 
     // Create empty state
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Process end of day for epoch 0: profits of 100 and end of day balance of 200
     scenario.next_epoch(addr);
@@ -151,7 +156,8 @@ public fun cannot_process_eod_before_epoch_ended() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
     state.process_end_of_day(0, 100, 0, scenario.ctx());
 
     abort 0
@@ -162,7 +168,8 @@ public fun cannot_process_eod_for_wrong_epoch() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Advance to epoch 2
     scenario.next_epoch(addr);
@@ -179,7 +186,8 @@ public fun cannot_process_eod_wrong_profits_or_losses() {
     let addr = @0xA;
     let mut scenario = begin(addr);
     // Initialize history to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Advance to epoch 1
     scenario.next_epoch(addr);
@@ -193,7 +201,8 @@ public fun stake_amount_correctly_transferred_basic() {
     let addr = @0xA;
     let mut scenario = begin(addr);
 
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add pending stake of 100
     state.process_stake(100, scenario.ctx());
@@ -237,7 +246,8 @@ public fun stake_amount_correctly_transferred_profits() {
     let mut scenario = begin(addr);
 
     // Initialize history to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add pending stake of 100
     state.process_stake(100, scenario.ctx());
@@ -279,7 +289,8 @@ public fun stake_amount_correctly_transferred_losses() {
     let mut scenario = begin(addr);
 
     // Initialize history to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add pending stake of 100
     state.process_stake(100, scenario.ctx());
@@ -322,7 +333,8 @@ public fun stake_amount_correctly_transferred_full_unstake_profits() {
     let mut scenario = begin(addr);
 
     // Initialize history to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add pending stake of 100
     state.process_stake(100, scenario.ctx());
@@ -354,7 +366,8 @@ public fun stake_amount_correctly_transferred_full_unstake_losses() {
     let mut scenario = begin(addr);
 
     // Initialize state to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add pending stake of 100
     state.process_stake(100, scenario.ctx());
@@ -387,7 +400,8 @@ public fun stake_amount_correctly_transferred_bankrupt() {
     let mut scenario = begin(addr);
 
     // Initialize state to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add pending stake of 100
     state.process_stake(100, scenario.ctx());
@@ -419,7 +433,8 @@ public fun calculate_ggr_share_losses() {
     let mut scenario = begin(addr);
 
     // Initialize state to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add stake of 100
     state.process_stake(100, scenario.ctx());
@@ -484,7 +499,8 @@ public fun calculate_ggr_share_profits() {
     let mut scenario = begin(addr);
 
     // Initialize state to epoch 0
-    let mut state = house_state::new(scenario.ctx());
+    let house_id = object::id_from_address(@0x0);
+    let mut state = house_state::new(house_id, scenario.ctx());
 
     // Add stake of 100
     state.process_stake(100, scenario.ctx());

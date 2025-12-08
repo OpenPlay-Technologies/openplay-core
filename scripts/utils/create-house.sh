@@ -50,23 +50,23 @@ get_parameter_set() {
     case $set_num in
         1)
             PRIVATE=false
-            MIN_ACTIVATION_BALANCE=10000000000
-            HOUSE_TYPE="PUBLIC_STANDARD"
+            MIN_ACTIVATION_BALANCE=1000000000
+            HOUSE_TYPE="PUBLIC_1_SUI"
             ;;
         2)
             PRIVATE=false
             MIN_ACTIVATION_BALANCE=50000000000
-            HOUSE_TYPE="PUBLIC_PREMIUM"
+            HOUSE_TYPE="PUBLIC_50_SUI"
             ;;
         3)
             PRIVATE=true
             MIN_ACTIVATION_BALANCE=10000000000
-            HOUSE_TYPE="PRIVATE_STANDARD"
+            HOUSE_TYPE="PRIVATE_10_SUI"
             ;;
         4)
             PRIVATE=true
             MIN_ACTIVATION_BALANCE=1000000000
-            HOUSE_TYPE="PRIVATE_STANDARD_SMALL"
+            HOUSE_TYPE="PRIVATE_1_SUI"
             ;;
         *)
             print_error "Invalid parameter set: $set_num"
@@ -177,16 +177,16 @@ else
     exit 1
 fi
 
-# Extract house ID
-HOUSE_ID=$(echo "$HOUSE_OUTPUT" | jq -r '.objectChanges[] | select(.type == "created" and (.objectType | contains("::house::House"))) | .objectId')
+# Extract house ID (get first match only)
+HOUSE_ID=$(echo "$HOUSE_OUTPUT" | jq -r '.objectChanges[] | select(.type == "created" and (.objectType | contains("::house::House"))) | .objectId' | head -n1)
 
 if [ -z "$HOUSE_ID" ] || [ "$HOUSE_ID" = "null" ]; then
     print_error "Failed to extract house ID"
     exit 1
 fi
 
-# Extract house admin cap ID (check both created and transferred since it's transferred in the same transaction)
-HOUSE_ADMIN_CAP_ID=$(echo "$HOUSE_OUTPUT" | jq -r '.objectChanges[] | select((.type == "created" or .type == "transferred") and (.objectType | contains("::house::HouseAdminCap"))) | .objectId')
+# Extract house admin cap ID (check both created and transferred since it's transferred in the same transaction, get first match only)
+HOUSE_ADMIN_CAP_ID=$(echo "$HOUSE_OUTPUT" | jq -r '.objectChanges[] | select((.type == "created" or .type == "transferred") and (.objectType | contains("::house::HouseAdminCap"))) | .objectId' | head -n1)
 
 if [ -z "$HOUSE_ADMIN_CAP_ID" ] || [ "$HOUSE_ADMIN_CAP_ID" = "null" ]; then
     print_error "Failed to extract house admin cap ID"

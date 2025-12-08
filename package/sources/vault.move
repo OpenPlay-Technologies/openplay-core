@@ -17,6 +17,7 @@ const EGameDoesNotExist: u64 = 4;
 /// Stores all assets for a House, including play balance, reserve balance, and collected fees.
 /// Manages the separation between funds available for game payouts and staked reserves.
 public struct Vault has store {
+    house_id: ID,
     epoch: u64,
     collected_protocol_fees: Balance<SUI>,
     collected_game_fees: VecMap<ID, Balance<SUI>>,
@@ -27,11 +28,13 @@ public struct Vault has store {
 
 /// Event emitted when the play balance is funded from reserves.
 public struct PlayBalanceFundedEvent has copy, drop {
+    house_id: ID,
     amount: u64,
 }
 
 /// Event emitted when the play balance is cleared back to reserves at end of epoch.
 public struct PlayBalanceClearedEvent has copy, drop {
+    house_id: ID,
     amount: u64,
 }
 
@@ -66,8 +69,9 @@ public fun epoch(self: &Vault): u64 {
 // === Public-Package Functions ===
 
 /// Creates an empty vault, with all balances initialized to zero and the epoch set to the current epoch.
-public(package) fun empty(ctx: &TxContext): Vault {
+public(package) fun empty(house_id: ID, ctx: &TxContext): Vault {
     Vault {
+        house_id,
         epoch: ctx.epoch(),
         collected_protocol_fees: balance::zero(),
         collected_game_fees: vec_map::empty(),
@@ -96,6 +100,7 @@ public(package) fun process_end_of_day(self: &mut Vault, ctx: &TxContext): (bool
 
     // Event
     emit(PlayBalanceClearedEvent {
+        house_id: self.house_id,
         amount: amount_cleared,
     });
 
@@ -111,6 +116,7 @@ public(package) fun fund_play_balance(self: &mut Vault, target_balance: u64) {
 
     // Event
     emit(PlayBalanceFundedEvent {
+        house_id: self.house_id,
         amount: target_balance,
     });
 }
