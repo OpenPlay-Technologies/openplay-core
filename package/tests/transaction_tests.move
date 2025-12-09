@@ -136,3 +136,9 @@ public fun min_transaction_amount_returns_correct_value() {
         scenario.end();
     };
 }
+
+// NOTE: EUnknownTxType cannot be tested directly from tests because Transaction struct
+// can only be instantiated within its defining module, and all creation functions
+// use valid transaction types (tx_type_bet() or tx_type_win()).
+// The EUnknownTxType error is a safety check that should never occur in practice
+// since all transaction creation is controlled by the module.

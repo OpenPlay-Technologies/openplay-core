@@ -18,6 +18,25 @@ public struct Account has store {
 }
 
 // === View Functions ===
+/// Returns the lifetime total bets.
+public fun lifetime_total_bets(self: &Account): u64 {
+    self.lifetime_total_bets
+}
+
+/// Returns the lifetime total wins.
+public fun lifetime_total_wins(self: &Account): u64 {
+    self.lifetime_total_wins
+}
+
+/// Returns the current debit balance.
+public fun debit_balance(self: &Account): u64 {
+    self.debit_balance
+}
+
+/// Returns the current credit balance.
+public fun credit_balance(self: &Account): u64 {
+    self.credit_balance
+}
 
 // === Package Functions ===
 /// Creates a new empty Account with all values initialized to zero.

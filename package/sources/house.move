@@ -4,6 +4,7 @@
 module openplay_core::house;
 
 use openplay_core::balance_manager::{Self, BalanceManager, PlayCap};
+use openplay_core::calculations::mul_floor;
 use openplay_core::core_constants::{
     max_bps,
     max_house_and_collector_fees_bps,
@@ -306,12 +307,25 @@ public fun buy_shares(
     let current_epoch = ctx.epoch();
     let player = ctx.sender();
 
-    // Calculate shares to mint
-    // Since shares are 1:1 with MIST, shares = deposit_amount / nav_per_share
+    // Calculate shares to mint using mul_floor to handle rounding properly
+    // shares = deposit_amount / nav_per_share = (deposit_amount * total_shares) / effective_value
     // Round DOWN to favor protocol (user gets slightly fewer shares)
-    // NAV should never be 0 in normal operation (returns INITIAL_NAV when total_shares is 0)
-    assert!(nav_per_share > 0, EInvalidAmount);
-    let shares_to_mint = deposit_amount / nav_per_share;
+    let total_shares = self.state.total_shares();
+    let shares_to_mint = if (total_shares == 0) {
+        // If no shares exist yet, use 1:1 ratio (NAV = 1)
+        deposit_amount
+    } else {
+        let vault_value = self.vault.house_balance();
+        let total_pending_fees = self.state.calculate_total_pending_fees();
+        let effective_value = if (vault_value > total_pending_fees) {
+            vault_value - total_pending_fees
+        } else {
+            0
+        };
+        assert!(effective_value > 0, EInvalidAmount);
+        // Use mul_floor to preserve precision: (deposit_amount * total_shares) / effective_value
+        mul_floor(deposit_amount, total_shares, effective_value)
+    };
 
     // Ensure we mint at least some shares
     assert!(shares_to_mint > 0, EInvalidAmount);
@@ -367,10 +381,20 @@ public fun sell_shares(
     let current_epoch = ctx.epoch();
     let player = ctx.sender();
 
-    // Calculate payout
-    // Since shares are 1:1 with MIST, payout = shares_to_sell * nav_per_share
+    // Calculate payout using mul_floor to handle rounding properly
+    // payout = shares_to_sell * nav_per_share = (shares_to_sell * effective_value) / total_shares
     // Round DOWN to favor protocol (user gets slightly less)
-    let payout = shares_to_sell * nav_per_share;
+    let total_shares = self.state.total_shares();
+    assert!(total_shares > 0, EInvalidAmount);
+    let vault_value = self.vault.house_balance();
+    let total_pending_fees = self.state.calculate_total_pending_fees();
+    let effective_value = if (vault_value > total_pending_fees) {
+        vault_value - total_pending_fees
+    } else {
+        0
+    };
+    // Use mul_floor to preserve precision: (shares_to_sell * effective_value) / total_shares
+    let payout = mul_floor(shares_to_sell, effective_value, total_shares);
 
     // Remove shares from participation
     participation::remove_shares(participation, shares_to_sell);
@@ -647,11 +671,16 @@ public fun admin_add_tx_allowed_with_collector(
     assert!(fee_collector.house_id() == self.id(), EInvalidFeeCollector);
 
     // Check if adding a new game would exceed the maximum
-    if (!self.game_fee_collectors.contains(&game_id)) {
+    let is_update = self.game_fee_collectors.contains(&game_id);
+    if (!is_update) {
         assert!(self.game_fee_collectors.length() < MAX_GAMES, EMaxGamesReached);
     };
 
     // Assign fee collector (this also whitelists the game)
+    // Remove existing entry if updating, then insert new value
+    if (is_update) {
+        self.game_fee_collectors.remove(&game_id);
+    };
     self.game_fee_collectors.insert(game_id, fee_collector.id());
 
     // Event
@@ -830,8 +859,11 @@ public fun openplay_admin_new_house(
 public fun openplay_admin_claim_protocol_fees(
     self: &mut House,
     _admin_cap: &OpenPlayAdminCap,
+    registry: &Registry,
     ctx: &mut TxContext,
 ): Coin<SUI> {
+    // Ensure end of day is processed before claiming fees
+    self.process_end_of_day(registry, ctx);
     let fee_coin = self.vault.withdraw_protocol_fees().into_coin(ctx);
     let current_epoch = ctx.epoch();
 
