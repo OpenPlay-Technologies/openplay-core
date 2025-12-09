@@ -3,6 +3,7 @@ module openplay_core::core_test_utils;
 
 use openplay_core::house::{Self, House, HouseAdminCap};
 use openplay_core::participation::Participation;
+use openplay_core::registry::{Self, Registry};
 use sui::coin::mint_for_testing;
 use sui::random::{Random, create_for_testing};
 use sui::sui::SUI;
@@ -32,12 +33,13 @@ public fun create_and_fix_random(bytes: vector<u8>) {
 
 public fun fund_house_for_playing(
     house: &mut House,
+    registry: &Registry,
     amount: u64,
     ctx: &mut TxContext,
 ): Participation {
     let mut participation = house.new_participation(ctx);
-    let stake = mint_for_testing<SUI>(amount, ctx);
-    house.stake(&mut participation, stake, ctx);
+    let deposit = mint_for_testing<SUI>(amount, ctx);
+    house.buy_shares(registry, &mut participation, deposit, ctx);
     participation
 }
 
@@ -46,10 +48,12 @@ public fun default_house(ctx: &mut TxContext): (House, HouseAdminCap) {
         false,
         100_000,
         2000, // 20% house fee (performance fee)
+        1000, // 10% fee collector share
+        50,   // 0.5% protocol fee (from registry_for_testing)
         ctx,
     );
-    let game_id = object::id_from_address(@0xA);
-    house.admin_set_game_fee(&house_admin, game_id, 69);
+    // Note: In v3.1, games need fee collectors assigned via admin_add_tx_allowed_with_collector
+    // This is done in individual tests that need it
 
     (house, house_admin)
 }

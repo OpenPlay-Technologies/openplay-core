@@ -218,6 +218,11 @@ public fun house_fee_bps(self: &House): u64 {
     self.house_fee_bps
 }
 
+/// Returns the house balance (all funds available for the house).
+public fun house_balance(self: &House): u64 {
+    self.vault.house_balance()
+}
+
 /// Calculates current NAV per share.
 /// NAV accounts for pending protocol, house, and collector fees (virtually reducing NAV during the epoch).
 /// Uses optimized calculation that sums all fee bps and calculates once.

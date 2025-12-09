@@ -3,7 +3,6 @@ module openplay_core::calculations_tests;
 
 use openplay_core::calculations::{
     Self,
-    actualize_amount,
     mul_ceil,
     mul_ceil_bps,
     mul_floor,
@@ -234,121 +233,8 @@ public fun mul_ceil_bps_vs_mul_floor_bps_difference() {
 }
 
 // ===== actualize_amount tests =====
-
-#[test]
-public fun actualize_share_profits_floor_ok() {
-    let base = 100_000;
-    let profits = 1_000; // 1% profit
-    let amount = 1000;
-    // amount * (base + profits) / base = 1000 * 101000 / 100000 = 1010
-    let new_amount = actualize_amount(amount, profits, 0, base, false);
-    assert_eq!(new_amount, 1010);
-}
-
-#[test]
-public fun actualize_share_profits_ceil_ok() {
-    let base = 100_000;
-    let profits = 1_000; // 1% profit
-    let amount = 1000;
-    // amount * (base + profits) / base = 1000 * 101000 / 100000 = 1010 (exact, so same)
-    let new_amount = actualize_amount(amount, profits, 0, base, true);
-    assert_eq!(new_amount, 1010);
-}
-
-#[test]
-public fun actualize_big_share_profits_ok() {
-    let base = 100_000;
-    let profits = 200_000; // 200% profit
-    let amount = 1000;
-    // amount * (base + profits) / base = 1000 * 300000 / 100000 = 3000
-    let new_amount = actualize_amount(amount, profits, 0, base, false);
-    assert_eq!(new_amount, 3000);
-}
-
-#[test]
-public fun actualize_share_losses_floor_ok() {
-    let base = 100_000;
-    let losses = 1_000; // 1% loss
-    let amount = 1000;
-    // amount * (base - losses) / base = 1000 * 99000 / 100000 = 990
-    let new_amount = actualize_amount(amount, 0, losses, base, false);
-    assert_eq!(new_amount, 990);
-}
-
-#[test]
-public fun actualize_share_losses_ceil_ok() {
-    let base = 100_000;
-    let losses = 1_000; // 1% loss
-    let amount = 1000;
-    // amount * (base - losses) / base = 1000 * 99000 / 100000 = 990 (exact, so same)
-    let new_amount = actualize_amount(amount, 0, losses, base, true);
-    assert_eq!(new_amount, 990);
-}
-
-#[test]
-public fun actualize_big_share_losses_ok() {
-    let base = 100_000;
-    let losses = 99_000; // 99% loss
-    let amount = 1000;
-    // amount * (base - losses) / base = 1000 * 1000 / 100000 = 10
-    let new_amount = actualize_amount(amount, 0, losses, base, false);
-    assert_eq!(new_amount, 10);
-}
-
-#[test]
-public fun actualize_bankruptcy_ok() {
-    let base = 100_000;
-    let losses = 100_000; // 100% loss
-    let amount = 1000;
-    // amount * (base - losses) / base = 1000 * 0 / 100000 = 0
-    let new_amount = actualize_amount(amount, 0, losses, base, false);
-    assert_eq!(new_amount, 0);
-}
-
-#[test]
-public fun actualize_losses_rounding_difference() {
-    let base = 100_000;
-    let losses = 1; // Very small loss
-    let amount = 1; // Very small amount
-    // amount * (base - losses) / base = 1 * 99999 / 100000 = 0.99999
-    let floor_result = actualize_amount(amount, 0, losses, base, false); // rounds to 0
-    let ceil_result = actualize_amount(amount, 0, losses, base, true); // rounds to 1
-    assert_eq!(floor_result, 0);
-    assert_eq!(ceil_result, 1);
-}
-
-#[test]
-public fun actualize_do_nothing_ok() {
-    let base = 100_000;
-    let amount = 1000;
-    let new_amount = actualize_amount(amount, 0, 0, base, false);
-    assert_eq!(new_amount, 1000);
-}
-
-#[test, expected_failure(abort_code = calculations::ELossTooHigh)]
-public fun actualize_invalid_losses_error() {
-    let base = 100_000;
-    let losses = 100_010; // > 100% loss
-    let amount = 1000;
-    let _new_amount = actualize_amount(amount, 0, losses, base, false);
-    abort 0
-}
-
-#[test, expected_failure(abort_code = calculations::EDivisionByZero)]
-public fun actualize_zero_base_error() {
-    let amount = 1000;
-    let _new_amount = actualize_amount(amount, 1000, 0, 0, false);
-    abort 0
-}
-
-#[test, expected_failure(abort_code = calculations::EOverflow)]
-public fun actualize_profits_overflow_error() {
-    let base = std::u64::max_value!();
-    let profits = 1; // This will cause base + profits to overflow
-    let amount = 1000;
-    let _new_amount = actualize_amount(amount, profits, 0, base, false);
-    abort 0
-}
+// NOTE: actualize_amount function was removed in v3.1 as part of the transition
+// from stake-based to share-based participation model. These tests are no longer relevant.
 
 // ===== Edge cases and stress tests =====
 
@@ -532,103 +418,8 @@ public fun mul_ceil_bps_over_100_percent_ok() {
 }
 
 // ===== Missing actualize_amount tests =====
-
-#[test]
-public fun actualize_profits_rounding_difference() {
-    // Test that profits with round_up=true vs false can differ
-    // Use values that will actually show a difference
-    let base = 3;
-    let profits = 1;
-    let amount = 1;
-    // amount * (base + profits) / base = 1 * 4 / 3 = 1.333...
-    let floor_result = actualize_amount(amount, profits, 0, base, false); // rounds to 1
-    let ceil_result = actualize_amount(amount, profits, 0, base, true); // rounds to 2
-    assert_eq!(floor_result, 1);
-    assert_eq!(ceil_result, 2);
-    assert!(ceil_result > floor_result);
-}
-
-#[test]
-public fun actualize_losses_exact_100_percent_ok() {
-    // Test losses exactly equal to base (100% loss)
-    let base = 100_000;
-    let losses = 100_000;
-    let amount = 1000;
-    let new_amount = actualize_amount(amount, 0, losses, base, false);
-    assert_eq!(new_amount, 0);
-}
-
-#[test]
-public fun actualize_losses_exact_100_percent_ceil_ok() {
-    // Test losses exactly equal to base with ceil
-    let base = 100_000;
-    let losses = 100_000;
-    let amount = 1000;
-    let new_amount = actualize_amount(amount, 0, losses, base, true);
-    assert_eq!(new_amount, 0);
-}
-
-#[test]
-public fun actualize_profits_zero_amount_ok() {
-    // Test with zero amount
-    let base = 100_000;
-    let profits = 1_000;
-    let amount = 0;
-    let new_amount = actualize_amount(amount, profits, 0, base, false);
-    assert_eq!(new_amount, 0);
-}
-
-#[test]
-public fun actualize_losses_zero_amount_ok() {
-    // Test with zero amount
-    let base = 100_000;
-    let losses = 1_000;
-    let amount = 0;
-    let new_amount = actualize_amount(amount, 0, losses, base, false);
-    assert_eq!(new_amount, 0);
-}
-
-#[test]
-public fun actualize_profits_large_ratio_ok() {
-    // Test with very large profit ratio
-    let base = 1;
-    let profits = 999; // 99900% profit
-    let amount = 1;
-    // amount * (base + profits) / base = 1 * 1000 / 1 = 1000
-    let new_amount = actualize_amount(amount, profits, 0, base, false);
-    assert_eq!(new_amount, 1000);
-}
-
-#[test]
-public fun actualize_losses_boundary_ok() {
-    // Test with losses = base - 1 (just under 100%)
-    let base = 100_000;
-    let losses = 99_999; // 99.999% loss
-    let amount = 1000;
-    // amount * (base - losses) / base = 1000 * 1 / 100000 = 0.01 -> rounds to 0
-    let new_amount = actualize_amount(amount, 0, losses, base, false);
-    assert_eq!(new_amount, 0);
-}
-
-#[test]
-public fun actualize_losses_boundary_ceil_ok() {
-    // Test with losses = base - 1 with ceil
-    let base = 100_000;
-    let losses = 99_999;
-    let amount = 1000;
-    // amount * (base - losses) / base = 1000 * 1 / 100000 = 0.01 -> rounds up to 1
-    let new_amount = actualize_amount(amount, 0, losses, base, true);
-    assert_eq!(new_amount, 1);
-}
-
-#[test]
-public fun actualize_do_nothing_with_round_up_true_ok() {
-    // Test do_nothing path with round_up = true
-    let base = 100_000;
-    let amount = 1000;
-    let new_amount = actualize_amount(amount, 0, 0, base, true);
-    assert_eq!(new_amount, 1000);
-}
+// NOTE: actualize_amount function was removed in v3.1 as part of the transition
+// from stake-based to share-based participation model. These tests are no longer relevant.
 
 // ===== Boundary value tests =====
 

@@ -16,7 +16,7 @@ public fun test_update_protocol_fee_bps_valid() {
     
     // Test with a valid fee (less than 100%)
     let valid_fee = 100; // 1%
-    registry::update_protocol_fee_bps(&mut registry, &cap, valid_fee);
+    registry::update_protocol_fee_bps(&mut registry, &cap, valid_fee, scenario.ctx());
     
     assert!(registry::protocol_fee_bps(&registry) == valid_fee, 0);
     
@@ -36,7 +36,7 @@ public fun test_update_protocol_fee_bps_invalid_100_percent() {
     
     // Test with 100% (10000 basis points) - should fail
     let invalid_fee = max_bps(); // 10000 = 100%
-    registry::update_protocol_fee_bps(&mut registry, &cap, invalid_fee);
+    registry::update_protocol_fee_bps(&mut registry, &cap, invalid_fee, scenario.ctx());
     
     // This line should never be reached due to expected_failure
     destroy(registry);
@@ -55,7 +55,7 @@ public fun test_update_protocol_fee_bps_invalid_over_100_percent() {
     
     // Test with > 100% (more than 10000 basis points) - should fail
     let invalid_fee = max_bps() + 1; // 10001 = 100.01%
-    registry::update_protocol_fee_bps(&mut registry, &cap, invalid_fee);
+    registry::update_protocol_fee_bps(&mut registry, &cap, invalid_fee, scenario.ctx());
     
     // This line should never be reached due to expected_failure
     destroy(registry);
@@ -73,7 +73,7 @@ public fun test_update_protocol_fee_bps_max_valid() {
     
     // Test with maximum valid fee (9999 basis points = 99.99%)
     let max_valid_fee = max_bps() - 1; // 9999 = 99.99%
-    registry::update_protocol_fee_bps(&mut registry, &cap, max_valid_fee);
+    registry::update_protocol_fee_bps(&mut registry, &cap, max_valid_fee, scenario.ctx());
     
     assert!(registry::protocol_fee_bps(&registry) == max_valid_fee, 0);
     

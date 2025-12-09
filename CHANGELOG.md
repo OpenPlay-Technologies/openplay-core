@@ -2,7 +2,419 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v2.1] - In Progress
+## [v3.1] - In Progress
+
+### Major Architectural Changes
+
+#### Share-Based Participation Model
+- **BREAKING CHANGE:** Complete redesign from stake-based to share-based participation model
+- Houses are now always active (no activation/deactivation cycles)
+- Users buy and sell shares instead of staking/unstaking
+- Shares are 1:1 with MIST (1 share = 1 MIST at initial NAV)
+- NAV (Net Asset Value) per share calculated as: `effective_value / total_shares`
+- Initial NAV is 1 MIST per share when no shares exist
+- Proceeds from selling shares are immediately available (no pending unstake)
+- Removed complex stake management: `stake`, `pending_stake`, `pending_unstake`, `claimable_balance`
+
+#### Fee Collector System
+- **New Module:** `fee_collector.move` - complete new module for game creator fee collection
+- Multiple games can be assigned to the same fee collector
+- Fee collectors receive a share of GGR (Gross Gaming Revenue) calculated at epoch end
+- Fees are calculated from GGR (bet - win) rather than per-transaction
+- Fee collector share is configurable per house and captured at epoch start
+- Fee collectors can claim accumulated fees using their `FeeCollectorCap`
+
+#### Simplified Vault Architecture
+- **BREAKING CHANGE:** Removed play/reserve balance separation
+- Single `house_balance` replaces `play_balance` and `reserve_balance`
+- House is always active, so no need to fund/clear play balance
+- Removed epoch tracking from vault (moved to state)
+- Removed `process_end_of_day()` from vault (moved to house/state)
+
+### Added
+
+#### Fee Collector (`fee_collector.move`) - NEW MODULE
+- **New Structs:**
+  - `FeeCollector` - shared object representing a fee collector instance
+  - `FeeCollectorCap` - owned capability required to claim fees
+- **New Functions:**
+  - `new(house_id: ID, ctx: &mut TxContext): (FeeCollector, FeeCollectorCap)` - creates a new fee collector
+  - `id(&FeeCollector): ID` - returns fee collector ID
+  - `house_id(&FeeCollector): ID` - returns associated house ID
+  - `assert_valid_cap(&FeeCollector, &FeeCollectorCap)` - validates cap ownership
+- **New Events:**
+  - `FeeCollectorCreatedEvent` - emitted when a fee collector is created
+
+#### House (`house.move`)
+- **New Struct Fields:**
+  - `fee_collector_share_bps: u64` - fee collector share of GGR (in basis points)
+  - `game_fee_collectors: VecMap<ID, ID>` - maps game_id to fee_collector_id (replaces `tx_allow_listed` and `games_fee_bps`)
+- **New Constants:**
+  - `INITIAL_NAV: u64 = 1_000_000_000` - initial NAV per share (1 MIST = 1 share)
+  - `max_house_and_collector_fees_bps(): u64` - maximum combined house + collector fees (50% to ensure 30% for stakers)
+- **New Error Codes:**
+  - `ENotEnoughShares: u64 = 20` - not enough shares to sell
+  - `EInvalidAmount: u64 = 21` - invalid amount (e.g., deposit with zero shares)
+  - `EInvalidFeeCollector: u64 = 22` - fee collector doesn't belong to house
+  - `EHouseAndCollectorFeesTooHigh: u64 = 23` - combined fees exceed maximum
+  - `EProtocolFeeTooHigh: u64 = 24` - protocol fee exceeds maximum
+  - `EGameDoesNotExist: u64 = 25` - game not found when revoking
+- **New Functions:**
+  - `nav_per_share(&House): u64` - calculates current NAV per share
+  - `buy_shares(&mut House, &mut Participation, deposit: Coin<SUI>, ctx: &mut TxContext): u64` - buys shares with deposited funds
+  - `sell_shares(&mut House, &mut Participation, shares_to_sell: u64, ctx: &mut TxContext): Coin<SUI>` - sells shares and withdraws proceeds
+  - `admin_create_fee_collector(&House, &HouseAdminCap, ctx: &mut TxContext): (FeeCollector, FeeCollectorCap)` - creates a fee collector
+  - `admin_add_tx_allowed_with_collector(&mut House, &HouseAdminCap, game_id: ID, &FeeCollector)` - whitelists game and assigns fee collector
+  - `claim_collector_fees(&mut House, &Registry, &FeeCollector, &FeeCollectorCap, ctx: &mut TxContext): Coin<SUI>` - claims fees for a fee collector
+  - `admin_update_fees(&mut House, &HouseAdminCap, house_fee_bps: u64, fee_collector_share_bps: u64)` - updates both house and collector fees
+- **New Events:**
+  - `SharesPurchasedEvent` - emitted when shares are purchased (includes NAV, shares, total_shares, epoch)
+  - `SharesSoldEvent` - emitted when shares are sold (includes NAV, shares, total_shares, epoch)
+  - `CollectorFeesClaimedEvent` - emitted when collector fees are claimed (includes amount, epoch)
+  - `HouseFeesUpdatedEvent` - emitted when house/collector fees are updated (includes old/new values)
+  - `GameTransactionsAllowedEvent` - now includes `fee_collector_id`
+  - `GameTransactionsDisallowedEvent` - renamed from `GameTransactionsRevokedEvent`, includes `fee_collector_id`
+  - `HouseFeeProcessedEvent` - now includes `epoch`
+  - `ProtocolFeesProcessedEvent` - new event when protocol fees are processed (includes epoch)
+  - `HouseCreatedEvent` - now includes `private`, `min_activation_balance`, `house_fee_bps`, `fee_collector_share_bps`
+- **New Getter Functions:**
+  - `fee_collector_share_bps(&House): u64` - returns fee collector share in basis points
+
+#### Participation (`participation.move`)
+- **New Struct Field:**
+  - `shares: u64` - number of shares owned (replaces all stake-related fields)
+- **New Functions:**
+  - `shares(&Participation): u64` - returns number of shares owned
+  - `add_shares(&mut Participation, shares: u64)` - adds shares to participation
+  - `remove_shares(&mut Participation, shares: u64)` - removes shares from participation
+- **New Events:**
+  - `ParticipationCreatedEvent` - now includes `house_id` and `player`
+  - `ParticipationRemovedEvent` - now includes `house_id` and `player`
+- **New Error Codes:**
+  - `ENotEnoughShares: u64 = 7` - not enough shares to remove
+
+#### House State (`state/house_state.move`)
+- **New Struct Fields:**
+  - `total_shares: u64` - total shares in circulation
+  - `current_collector_ggr: VecMap<ID, CollectorGGR>` - tracks GGR per fee collector for current epoch
+  - `historic_collector_ggr: Table<u64, VecMap<ID, CollectorGGR>>` - historical GGR per fee collector per epoch
+  - `current_epoch_protocol_fee_bps: u64` - protocol fee captured at epoch start
+  - `current_epoch_house_fee_bps: u64` - house fee captured at epoch start
+  - `current_epoch_fee_collector_share_bps: u64` - collector share captured at epoch start
+- **New Structs:**
+  - `CollectorGGR` - tracks bet and win amounts for a fee collector
+  - `CollectorFee` - helper struct for returning collector fee information
+- **New Functions:**
+  - `total_shares(&State): u64` - returns total shares in circulation
+  - `mint_shares(&mut State, shares: u64)` - mints new shares
+  - `burn_shares(&mut State, shares: u64)` - burns shares
+  - `process_end_of_day()` - now returns `(collector_fees: vector<CollectorFee>, house_fee: u64, protocol_fee: u64)`
+  - `update_collector_ggr_bet(&mut State, fee_collector_id: ID, bet_amount: u64)` - updates collector GGR for bets
+  - `update_collector_ggr_win(&mut State, fee_collector_id: ID, win_amount: u64)` - updates collector GGR for wins
+- **New Helper Functions:**
+  - `empty_collector_ggr(): CollectorGGR` - creates empty collector GGR
+  - `bet_amount(&CollectorGGR): u128` - returns bet amount
+  - `win_amount(&CollectorGGR): u128` - returns win amount
+  - `collector_id(&CollectorFee): ID` - returns collector ID
+  - `fee_amount(&CollectorFee): u64` - returns fee amount
+
+#### Vault (`vault.move`)
+- **New Struct Field:**
+  - `collected_collector_fees: VecMap<ID, Balance<SUI>>` - collected fees per fee collector
+  - `house_balance: Balance<SUI>` - single balance for all house funds (replaces play_balance + reserve_balance)
+- **New Functions:**
+  - `house_balance(&Vault): u64` - returns house balance
+  - `collected_collector_fees(&Vault, fee_collector_id: ID): u64` - returns collected fees for a collector (0 if doesn't exist)
+  - `process_collector_fee(&mut Vault, fee_collector_id: ID, amount: u64)` - processes and collects collector fees
+  - `withdraw_collector_fees(&mut Vault, fee_collector_id: ID): Balance<SUI>` - withdraws all collected collector fees
+  - `ensure_collector_fee_balance(&mut Vault, fee_collector_id: ID)` - ensures collector fee balance exists
+
+#### Core Constants (`core_constants.move`)
+- **New Constants:**
+  - `max_house_and_collector_fees_bps(): u64` - maximum combined house + collector fees (5000 = 50%)
+  - `max_protocol_fee_bps(): u64` - maximum protocol fee (1000 = 10%)
+
+#### Balance Manager (`balance_manager.move`)
+- **Event Changes:**
+  - All events now include address fields for tracking who performed the action:
+    - `BalanceManagerCreatedEvent` - added `creator: address`
+    - `DepositCompletedEvent` - added `depositor: address`
+    - `WithdrawalProcessedEvent` - added `withdrawer: address`
+    - `PlayCapMintedEvent` - added `minter: address`
+    - `PlayCapRevokedEvent` - added `revoker: address`
+    - `PlayCapDestroyedEvent` - added `destroyer: address`
+    - `BalanceManagerDestroyedEvent` - added `destroyer: address`
+    - `PlayCapAllowListPrunedEvent` - added `pruner: address`
+- **Function Signature Changes:**
+  - `revoke_play_cap()` - added `ctx: &TxContext` parameter
+  - `prune_allow_list()` - added `ctx: &TxContext` parameter
+  - `destroy_play_cap()` - added `ctx: &TxContext` parameter
+  - `destroy_play_cap_and_revoke()` - added `ctx: &TxContext` parameter
+- **Minor Changes:**
+  - Section comments updated: `Public-View Functions` → `View Functions`, `Public-Mutative Functions` → `Public Functions`
+  - Added `// === Events ===` section comment
+
+#### Registry (`registry.move`)
+- **New Functions:**
+  - `max_protocol_fee_bps(): u64` - returns maximum protocol fee in basis points
+
+### Changed
+
+#### House (`house.move`)
+- **BREAKING CHANGE - Struct Fields:**
+  - Removed: `games_fee_bps: VecMap<ID, u64>` - per-game fee configuration
+  - Removed: `tx_allow_listed: VecSet<ID>` - game allow list
+  - Added: `game_fee_collectors: VecMap<ID, ID>` - maps game_id to fee_collector_id (combines allow list and fee assignment)
+  - Added: `fee_collector_share_bps: u64` - fee collector share of GGR
+- **BREAKING CHANGE - Function Signatures:**
+  - `openplay_admin_new_house()` signature changed:
+    - **Added:** `registry: &Registry` parameter (for protocol fee validation)
+    - **Added:** `fee_collector_share_bps: u64` parameter
+    - Vault initialization: `vault::empty(house_id, ctx)` → `vault::empty(house_id)` (removed ctx)
+    - State initialization: `house_state::new(house_id, ctx)` → `house_state::new(house_id, protocol_fee_bps, house_fee_bps, fee_collector_share_bps, ctx)`
+  - `admin_add_tx_allowed()` → `admin_add_tx_allowed_with_collector()` - now requires fee collector
+  - `admin_revoke_tx_allowed()` signature changed:
+    - Parameter: `game_id: &ID` → `game_id: ID` (takes ownership)
+    - Event: `GameTransactionsRevokedEvent` → `GameTransactionsDisallowedEvent`
+  - `admin_set_game_fee()` - REMOVED (replaced by fee collector system)
+  - `admin_remove_game_fee()` - REMOVED (replaced by `admin_revoke_tx_allowed()`)
+  - `admin_claim_house_fees()` → `openplay_admin_claim_protocol_fees()` - now claims protocol fees (house fees handled differently)
+  - `claim_collector_fees()` - NEW function for claiming collector fees
+  - `process_end_of_day()` signature changed:
+    - **Added:** `registry: &Registry` parameter
+    - **Changed:** `ctx: &TxContext` → `ctx: &mut TxContext`
+    - Now gets protocol fee from registry and processes collector fees
+- **BREAKING CHANGE - Transaction Cap:**
+  - `HouseTransactionCap` struct changed:
+    - **Added:** `fee_collector_id: ID` field
+  - `assert_valid_tx_cap()` now validates fee_collector_id matches game assignment
+- **BREAKING CHANGE - Removed Functions:**
+  - `stake()` - REMOVED (replaced by `buy_shares()`)
+  - `unstake_v2()` - REMOVED (replaced by `sell_shares()`)
+  - `claim_all()` - REMOVED (shares are sold directly, no claim needed)
+  - `refresh()` - REMOVED (no longer needed in share model)
+  - `refresh_with_limit()` - REMOVED (no longer needed in share model)
+  - `update_participation_with_limit()` - REMOVED (no longer needed in share model)
+  - `activate_if_possible()` - REMOVED (house always active)
+  - `admin_set_game_fee()` - REMOVED (replaced by fee collector system)
+  - `admin_remove_game_fee()` - REMOVED (replaced by `admin_revoke_tx_allowed()`)
+  - `admin_claim_house_fees()` - REMOVED (replaced by `claim_collector_fees()` for collectors, protocol fees handled separately)
+- **Implementation Changes:**
+  - `process_end_of_day()` - completely rewritten:
+    - Now calculates fees from GGR (bet - win) at epoch end
+    - Processes collector fees per fee collector based on their GGR
+    - Moves fees to vault (collector fees, house fees, protocol fees)
+    - No longer calculates profits/losses from balance differences
+  - Fee calculation moved from per-transaction to epoch-end GGR-based
+  - House is always active (no activation/deactivation logic)
+  - Transaction processing now tracks fee collector GGR
+
+#### Participation (`participation.move`)
+- **BREAKING CHANGE - Complete Rewrite:**
+  - Removed all stake-related fields: `stake`, `pending_stake`, `pending_unstake`, `claimable_balance`, `last_updated_epoch`
+  - Now only tracks `shares: u64`
+  - Reduced from ~370 lines to ~106 lines (simplified by ~70%)
+- **BREAKING CHANGE - Removed Functions:**
+  - `stake()` - REMOVED
+  - `pending_stake()` - REMOVED
+  - `claimable_balance()` - REMOVED
+  - `pending_unstake()` - REMOVED
+  - `last_updated_epoch()` - REMOVED
+  - `add_stake()` - REMOVED (replaced by `add_shares()`)
+  - `unstake_v2()` - REMOVED (replaced by `remove_shares()`)
+  - `claim_all()` - REMOVED (shares sold directly)
+  - `process_end_of_day()` - REMOVED (no longer needed in share model)
+  - `current_state()` - REMOVED (no longer needed)
+- **Removed Events:**
+  - `ParticipationEndOfDayProcessedEvent` - REMOVED
+  - `ClaimProcessedEvent` - REMOVED
+- **Removed Error Codes:**
+  - `EInvalidGgrShare` - REMOVED
+  - `EEpochMismatch` - REMOVED
+  - `EEpochHasNotFinishedYet` - REMOVED
+  - `EInvalidProfitsOrLosses` - REMOVED
+  - `ENotEnoughToUnstake` - REMOVED
+  - `EActualizedUnstakeExceedsStake` - REMOVED
+
+#### House State (`state/house_state.move`)
+- **BREAKING CHANGE - Struct Fields:**
+  - Removed: `is_active: bool` - house always active
+  - Removed: `inactive_stake: u64` - no stake model
+  - Removed: `active_stake: u64` - no stake model
+  - Removed: `pending_unstake: u64` - no stake model
+  - Removed: `active_history: Table<u64, bool>` - no activation tracking
+  - Removed: `eod_history: Table<u64, EndOfDay>` - no end-of-day profit/loss tracking
+  - Added: `total_shares: u64` - total shares in circulation
+  - Added: `current_collector_ggr: VecMap<ID, CollectorGGR>` - fee collector GGR tracking
+  - Added: `historic_collector_ggr: Table<u64, VecMap<ID, CollectorGGR>>` - historical GGR
+  - Added: `current_epoch_protocol_fee_bps: u64` - protocol fee at epoch start
+  - Added: `current_epoch_house_fee_bps: u64` - house fee at epoch start
+  - Added: `current_epoch_fee_collector_share_bps: u64` - collector share at epoch start
+- **BREAKING CHANGE - Struct Changes:**
+  - `Volumes` struct changed:
+    - Removed: `active_stake_amount: u64` field
+- **BREAKING CHANGE - Function Signatures:**
+  - `new()` signature changed:
+    - **Added:** `protocol_fee_bps: u64`, `house_fee_bps: u64`, `fee_collector_share_bps: u64` parameters
+    - Removed all stake-related initialization
+  - `process_transactions()` signature changed:
+    - **Added:** `fee_collector_id: ID` parameter (for GGR tracking)
+    - Now tracks GGR per fee collector
+  - `process_end_of_day()` signature changed:
+    - **Added:** `prev_epoch: u64`, `fee_collector_share_bps: u64`, `house_fee_bps: u64`, `protocol_fee_bps: u64` parameters
+    - **Changed:** Return type from `()` to `(vector<CollectorFee>, u64, u64)` - returns collector fees, house fee, protocol fee
+    - Now calculates fees from GGR instead of profits/losses
+  - `process_volumes()` signature changed:
+    - **Added:** `fee_collector_id: ID` parameter
+- **BREAKING CHANGE - Removed Functions:**
+  - `refresh()` - REMOVED (no participation updates needed)
+  - `refresh_with_limit()` - REMOVED
+  - `update_participation()` - REMOVED (no participation updates)
+  - `maybe_activate()` - REMOVED (always active)
+  - `activate()` - REMOVED (always active)
+  - `desactivate()` - REMOVED (always active)
+  - `epoch_active()` - REMOVED (always active)
+  - `active_stake_at_epoch()` - REMOVED (no stake model)
+  - `calculate_ggr_share()` - REMOVED (no GGR sharing in share model)
+  - `add_stake()` - REMOVED
+  - `remove_inactive_stake()` - REMOVED
+  - `add_pending_unstake()` - REMOVED
+  - `assert_active()` - REMOVED
+- **Implementation Changes:**
+  - `process_bet()` and `process_win()` now track GGR per fee collector
+  - `process_end_of_day()` completely rewritten:
+    - Calculates GGR per fee collector (bet - win)
+    - Calculates collector fees from GGR
+    - Calculates house fee from total GGR
+    - Calculates protocol fee from total GGR
+    - Captures fees at epoch start for next epoch
+    - No longer processes profits/losses for participations
+  - Removed all stake activation/deactivation logic
+  - Removed all participation update logic
+
+#### Vault (`vault.move`)
+- **BREAKING CHANGE - Struct Fields:**
+  - Removed: `epoch: u64` - epoch tracking moved to state
+  - Removed: `play_balance: Balance<SUI>` - replaced by `house_balance`
+  - Removed: `reserve_balance: Balance<SUI>` - replaced by `house_balance`
+  - Removed: `collected_game_fees: VecMap<ID, Balance<SUI>>` - replaced by `collected_collector_fees`
+  - Added: `house_balance: Balance<SUI>` - single balance for all house funds
+  - Added: `collected_collector_fees: VecMap<ID, Balance<SUI>>` - collector fees (keyed by fee_collector_id)
+- **BREAKING CHANGE - Function Signatures:**
+  - `empty()` signature changed:
+    - **Removed:** `ctx: &TxContext` parameter
+    - Removed epoch initialization
+  - `deposit()` - now deposits to `house_balance` instead of `reserve_balance`
+  - `withdraw()` - now withdraws from `house_balance` instead of `reserve_balance`
+  - `settle_balance_manager()` - now uses `house_balance` instead of `play_balance`
+  - `process_protocol_fee()` - now uses `house_balance` instead of `play_balance`
+  - `process_house_fee()` - now uses `house_balance` instead of `reserve_balance`
+- **BREAKING CHANGE - Removed Functions:**
+  - `process_end_of_day()` - REMOVED (moved to house/state)
+  - `fund_play_balance()` - REMOVED (house always active)
+  - `play_balance()` - REMOVED
+  - `reserve_balance()` - REMOVED
+  - `epoch()` - REMOVED
+  - `collected_game_fees()` - REMOVED (replaced by `collected_collector_fees()`)
+  - `withdraw_game_fees()` - REMOVED (replaced by `withdraw_collector_fees()`)
+  - `process_game_fee()` - REMOVED (replaced by `process_collector_fee()`)
+  - `ensure_game_fee_balance()` - REMOVED (replaced by `ensure_collector_fee_balance()`)
+- **Removed Events:**
+  - `PlayBalanceFundedEvent` - REMOVED
+  - `PlayBalanceClearedEvent` - REMOVED
+- **Removed Error Codes:**
+  - `EGameDoesNotExist` - REMOVED (replaced by collector system)
+- **Implementation Changes:**
+  - All balance operations now use single `house_balance`
+  - No epoch tracking or end-of-day processing
+  - Collector fees tracked by fee_collector_id instead of game_id
+
+#### Transaction (`transaction.move`)
+- **Minor Changes:**
+  - Section comments updated: `Public-View Functions` → `View Functions`, `Public-Mutative Functions` → `Public Functions`, `Test-Only Functions` → `Test Functions`
+
+#### Parameter Store (`parameter_store.move`)
+- **Minor Changes:**
+  - Section comments updated for consistency
+  - Documentation improvements
+
+#### Account (`state/account.move`)
+- **Minor Changes:**
+  - Documentation improvements
+
+### Functional Changes
+
+#### Fee Calculation Model
+- **BREAKING CHANGE:** Fees are now calculated from GGR (Gross Gaming Revenue = bet - win) at epoch end, not per transaction
+- Collector fees are calculated per fee collector based on their GGR share
+- All fees (collector, house, protocol) are calculated from total GGR and deducted from house balance
+- Fees are captured at epoch start and used for the entire epoch (prevents mid-epoch fee changes affecting calculations)
+
+#### Participation Model
+- **BREAKING CHANGE:** Changed from stake-based to share-based model
+- Users buy shares with funds (shares minted based on current NAV)
+- Users sell shares to withdraw funds (proceeds = shares * NAV)
+- No more staking/unstaking with epoch delays
+- No more claimable balances - proceeds from selling shares are immediately available
+- No more participation updates/refreshes needed
+
+#### House Activation
+- **BREAKING CHANGE:** Houses are now always active
+- Removed activation/deactivation cycles
+- Removed minimum activation balance requirement for gameplay
+- Removed play/reserve balance separation
+- Single house balance used for all operations
+
+#### Game Whitelisting
+- **BREAKING CHANGE:** Game whitelisting now requires assigning a fee collector
+- `admin_add_tx_allowed_with_collector()` combines whitelisting and fee collector assignment
+- Transaction caps now include `fee_collector_id` and validate it matches game assignment
+- Removed per-game fee configuration (replaced by fee collector share)
+
+#### Transaction Processing
+- Transactions now track GGR per fee collector
+- Fee collector GGR is accumulated during the epoch
+- At epoch end, fees are calculated from GGR and distributed to collectors
+
+### Removed
+
+#### Stake-Based Participation System
+- **Removed from Participation:**
+  - All stake-related fields and functions
+  - Epoch-based profit/loss sharing
+  - Claimable balance system
+  - Pending stake/unstake queues
+- **Removed from House State:**
+  - Activation/deactivation logic
+  - Stake tracking (active/inactive/pending)
+  - Participation update/refresh functions
+  - GGR share calculations for participations
+- **Removed from House:**
+  - `stake()`, `unstake_v2()`, `claim_all()` functions
+  - `refresh()`, `refresh_with_limit()`, `update_participation_with_limit()` functions
+  - `activate_if_possible()` function
+  - Activation-related events
+
+#### Per-Game Fee System
+- **Removed from House:**
+  - `games_fee_bps: VecMap<ID, u64>` field
+  - `admin_set_game_fee()` function
+  - `admin_remove_game_fee()` function
+  - `game_fee_bps()` getter function
+- **Removed from Vault:**
+  - `collected_game_fees: VecMap<ID, Balance<SUI>>` field
+  - All game fee functions
+
+#### Play/Reserve Balance System
+- **Removed from Vault:**
+  - `play_balance` and `reserve_balance` fields
+  - `process_end_of_day()` function
+  - `fund_play_balance()` function
+  - All play/reserve balance operations
+
+---
+
+## [v2.1] - Completed
 
 ### Added
 

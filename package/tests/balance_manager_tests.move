@@ -146,7 +146,7 @@ public fun revoked_play_cap() {
     let _play_proof1 = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
 
     // Revoke
-    balance_manager.revoke_play_cap(&balance_manager_cap, &play_cap.cap_id());
+    balance_manager.revoke_play_cap(&balance_manager_cap, &balance_manager::cap_id(&play_cap), scenario.ctx());
 
     // Invalid cap
     let _play_proof2 = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
@@ -164,7 +164,7 @@ public fun destroy_play_cap_ok() {
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
 
     // Destroy the PlayCap directly - this should always work
-    balance_manager::destroy_play_cap(play_cap);
+    balance_manager::destroy_play_cap(play_cap, scenario.ctx());
 
     destroy(balance_manager);
     destroy(balance_manager_cap);
@@ -184,7 +184,7 @@ public fun destroy_play_cap_and_revoke_ok() {
     let _play_proof = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
 
     // Destroy and revoke - this should remove it from the allow list and destroy it
-    balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager);
+    balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager, scenario.ctx());
 
     // Create a new play cap to verify balance manager still works
     let play_cap2 = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
@@ -207,7 +207,7 @@ public fun destroy_play_cap_and_revoke_wrong_manager() {
     let play_cap = balance_manager1.mint_play_cap(&balance_manager_cap1, scenario.ctx());
 
     // Try to destroy with wrong balance manager - should fail
-    balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager2);
+    balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager2, scenario.ctx());
 
     abort 0
 }
@@ -236,7 +236,7 @@ public fun prune_allow_list_ok() {
     let _play_proof3 = balance_manager.generate_proof_as_player(&play_cap3, scenario.ctx());
 
     // Prune the allow list
-    balance_manager.prune_allow_list(&balance_manager_cap);
+    balance_manager.prune_allow_list(&balance_manager_cap, scenario.ctx());
 
     // Verify the allow list is now empty
     assert!(balance_manager.allow_list_length() == 0, 2);
@@ -272,7 +272,7 @@ public fun prune_allow_list_revokes_all_caps() {
     let _play_proof = balance_manager.generate_proof_as_player(&play_cap, scenario.ctx());
 
     // Prune the allow list
-    balance_manager.prune_allow_list(&balance_manager_cap);
+    balance_manager.prune_allow_list(&balance_manager_cap, scenario.ctx());
 
     // Verify the allow list is now empty
     assert!(balance_manager.allow_list_length() == 0, 1);
@@ -298,7 +298,7 @@ public fun prune_allow_list_wrong_cap() {
     assert!(balance_manager1.allow_list_length() == 1, 0);
 
     // Try to prune with wrong cap - should fail
-    balance_manager1.prune_allow_list(&balance_manager_cap2);
+    balance_manager1.prune_allow_list(&balance_manager_cap2, scenario.ctx());
 
     abort 0
 }

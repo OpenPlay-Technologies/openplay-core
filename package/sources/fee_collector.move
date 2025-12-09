@@ -86,3 +86,9 @@ public(package) fun assert_valid_cap(self: &FeeCollector, cap: &FeeCollectorCap)
     assert!(cap.fee_collector_id == self.id(), EInvalidCap);
     assert!(cap.id.to_inner() == self.cap_id, EInvalidCap);
 }
+
+/// Shares the FeeCollector object, making it accessible to everyone.
+/// After sharing, the object can be accessed by its ID by any caller.
+public fun share(self: FeeCollector) {
+    transfer::share_object(self);
+}
