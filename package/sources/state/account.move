@@ -1,11 +1,11 @@
-/// The account module maintains all the account data for each player.
-/// Keeps things like loyalty rank and gameplay statistics.
+/// The account module maintains account data for each balance manager.
+/// Tracks lifetime bet/win statistics and pending balances for settlement.
 /// Each balance manager has 1 account.
 module openplay_core::account;
 
 // === Imports ===
 
-// == Errors ==
+// === Errors ===
 
 // === Structs ===
 /// Tracks account state for a balance manager, including lifetime statistics and pending balances.
@@ -17,9 +17,9 @@ public struct Account has store {
     credit_balance: u64,
 }
 
-// === Public-View Functions ===
+// === View Functions ===
 
-// === Public-Package Functions ===
+// === Package Functions ===
 /// Creates a new empty Account with all values initialized to zero.
 public(package) fun empty(): Account {
     Account {
@@ -31,7 +31,7 @@ public(package) fun empty(): Account {
 }
 
 /// Returns a tuple (credit_balance, debit_balance) and resets their values.
-/// The Vault uses thes values to perform any necessary transfers in the balance manager.
+/// The Vault uses these values to perform any necessary transfers in the balance manager.
 public(package) fun settle(self: &mut Account): (u64, u64) {
     let old_credit = self.credit_balance;
     let old_debit = self.debit_balance;

@@ -20,7 +20,7 @@ public struct Transaction has copy, drop, store {
     amount: u64,
 }
 
-// === Public-View Functions ===
+// === View Functions ===
 /// Returns the amount of the transaction.
 public fun amount(self: &Transaction): u64 {
     self.amount
@@ -49,7 +49,7 @@ public fun is_debit(self: &Transaction): bool {
     !is_credit(self)
 }
 
-// === Public-Mutative Functions ===
+// === Public Functions ===
 /// Creates a win (credit) transaction with the specified amount.
 /// Validates that the amount meets the minimum transaction requirement.
 /// Aborts with EAmountTooLow if amount is less than MIN_TRANSACTION_AMOUNT.
@@ -72,7 +72,7 @@ public fun bet_checked(amount: u64): Transaction {
     }
 }
 
-// === Test-Only Functions ===
+// === Test Functions ===
 /// Creates a win (credit) transaction with the specified amount.
 /// Test-only version that bypasses minimum amount validation.
 #[test_only]

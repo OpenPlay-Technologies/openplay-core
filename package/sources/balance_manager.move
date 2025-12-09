@@ -52,55 +52,64 @@ public struct PlayProof has drop {
     player: address,
 }
 
+// === Events ===
 /// Event emitted when a new BalanceManager is created.
 public struct BalanceManagerCreatedEvent has copy, drop {
     balance_manager_id: ID,
     balance_manager_cap_id: ID,
+    creator: address, // Address of the account that created the balance manager
 }
 
 /// Event emitted when a deposit is completed to a BalanceManager.
 public struct DepositCompletedEvent has copy, drop {
     balance_manager_id: ID,
     amount: u64,
+    depositor: address, // Address of the account that made the deposit
 }
 
 /// Event emitted when a withdrawal is processed from a BalanceManager.
 public struct WithdrawalProcessedEvent has copy, drop {
     balance_manager_id: ID,
     amount: u64,
+    withdrawer: address, // Address of the account that made the withdrawal
 }
 
 /// Event emitted when a new PlayCap is minted for a BalanceManager.
 public struct PlayCapMintedEvent has copy, drop {
     balance_manager_id: ID,
     play_cap_id: ID,
+    minter: address, // Address of the account that minted the PlayCap
 }
 
 /// Event emitted when a PlayCap is revoked from a BalanceManager.
 public struct PlayCapRevokedEvent has copy, drop {
     balance_manager_id: ID,
     play_cap_id: ID,
+    revoker: address, // Address of the account that revoked the PlayCap
 }
 
 /// Event emitted when a PlayCap is destroyed.
 public struct PlayCapDestroyedEvent has copy, drop {
     balance_manager_id: ID,
     play_cap_id: ID,
+    destroyer: address, // Address of the account that destroyed the PlayCap
 }
 
 /// Event emitted when a BalanceManager is destroyed.
 public struct BalanceManagerDestroyedEvent has copy, drop {
     balance_manager_id: ID,
     balance_manager_cap_id: ID,
+    destroyer: address, // Address of the account that destroyed the balance manager
 }
 
 /// Event emitted when all PlayCaps are pruned from the allow list.
 public struct PlayCapAllowListPrunedEvent has copy, drop {
     balance_manager_id: ID,
     pruned_count: u64,
+    pruner: address, // Address of the account that pruned the allow list
 }
 
-// === Public-View Functions ===
+// === View Functions ===
 /// Returns the id of the balance_manager.
 public fun id(self: &BalanceManager): ID {
     self.id.to_inner()
@@ -136,7 +145,7 @@ public fun allow_list_length(self: &BalanceManager): u64 {
     self.tx_allow_listed.length()
 }
 
-// === Public-Mutative Functions ===
+// === Public Functions ===
 /// Creates a new BalanceManager and its associated BalanceManagerCap.
 /// Returns both objects, with the cap granting ownership rights to the manager.
 public fun new(ctx: &mut TxContext): (BalanceManager, BalanceManagerCap) {
@@ -157,6 +166,7 @@ public fun new(ctx: &mut TxContext): (BalanceManager, BalanceManagerCap) {
     emit(BalanceManagerCreatedEvent {
         balance_manager_id: balance_manager.id(),
         balance_manager_cap_id: balance_manager_cap.id.to_inner(),
+        creator: ctx.sender(),
     });
 
     (balance_manager, balance_manager_cap)
@@ -183,6 +193,7 @@ public fun mint_play_cap(
     emit(PlayCapMintedEvent {
         balance_manager_id: self.id(),
         play_cap_id: id.to_inner(),
+        minter: ctx.sender(),
     });
 
     PlayCap {
@@ -192,7 +203,12 @@ public fun mint_play_cap(
 }
 
 /// Revoke a `PlayCap`. Only the owner can revoke a `PlayCap`.
-public fun revoke_play_cap(self: &mut BalanceManager, cap: &BalanceManagerCap, player_cap_id: &ID) {
+public fun revoke_play_cap(
+    self: &mut BalanceManager,
+    cap: &BalanceManagerCap,
+    player_cap_id: &ID,
+    ctx: &TxContext,
+) {
     self.validate_owner(cap);
 
     assert!(self.tx_allow_listed.contains(player_cap_id), EPlayCapNotInList);
@@ -201,13 +217,14 @@ public fun revoke_play_cap(self: &mut BalanceManager, cap: &BalanceManagerCap, p
     emit(PlayCapRevokedEvent {
         balance_manager_id: self.id(),
         play_cap_id: *player_cap_id,
+        revoker: ctx.sender(),
     });
 }
 
 /// Prune the allow list, removing all PlayCap IDs and effectively revoking all PlayCaps in circulation.
 /// Only the owner can call this function.
 /// This clears the entire tx_allow_listed, making all existing PlayCaps unable to generate proofs.
-public fun prune_allow_list(self: &mut BalanceManager, cap: &BalanceManagerCap) {
+public fun prune_allow_list(self: &mut BalanceManager, cap: &BalanceManagerCap, ctx: &TxContext) {
     self.validate_owner(cap);
 
     let pruned_count = self.tx_allow_listed.length();
@@ -216,18 +233,23 @@ public fun prune_allow_list(self: &mut BalanceManager, cap: &BalanceManagerCap) 
     emit(PlayCapAllowListPrunedEvent {
         balance_manager_id: self.id(),
         pruned_count,
+        pruner: ctx.sender(),
     });
 }
 
 /// Destroys a `PlayCap`. This function always works, even if the associated BalanceManager no longer exists.
 /// The PlayCap owner can call this to permanently destroy their PlayCap.
-public fun destroy_play_cap(play_cap: PlayCap) {
+public fun destroy_play_cap(
+    play_cap: PlayCap,
+    ctx: &TxContext,
+) {
     let PlayCap { id, balance_manager_id } = play_cap;
     let play_cap_id = id.to_inner();
 
     emit(PlayCapDestroyedEvent {
         balance_manager_id,
         play_cap_id,
+        destroyer: ctx.sender(),
     });
 
     object::delete(id);
@@ -240,6 +262,7 @@ public fun destroy_play_cap(play_cap: PlayCap) {
 public fun destroy_play_cap_and_revoke(
     play_cap: PlayCap,
     balance_manager: &mut BalanceManager,
+    ctx: &TxContext,
 ) {
     let play_cap_id = cap_id(&play_cap);
     let balance_manager_id = cap_balance_manager_id(&play_cap);
@@ -253,6 +276,7 @@ public fun destroy_play_cap_and_revoke(
         emit(PlayCapRevokedEvent {
             balance_manager_id,
             play_cap_id,
+            revoker: ctx.sender(),
         });
     };
 
@@ -261,6 +285,7 @@ public fun destroy_play_cap_and_revoke(
     emit(PlayCapDestroyedEvent {
         balance_manager_id,
         play_cap_id,
+        destroyer: ctx.sender(),
     });
     object::delete(id);
 }
@@ -306,6 +331,7 @@ public fun deposit(
     emit(DepositCompletedEvent {
         balance_manager_id: self.id(),
         amount: to_deposit.value(),
+        depositor: ctx.sender(),
     });
 
     deposit_with_proof(self, &proof, to_deposit.into_balance());
@@ -323,6 +349,7 @@ public fun withdraw(
     emit(WithdrawalProcessedEvent {
         balance_manager_id: self.id(),
         amount: withdraw_amount,
+        withdrawer: ctx.sender(),
     });
     withdraw_with_proof(self, &proof, withdraw_amount).into_coin(ctx)
 }
@@ -339,6 +366,7 @@ public fun withdraw_all(
     emit(WithdrawalProcessedEvent {
         balance_manager_id: self.id(),
         amount: withdraw_amount,
+        withdrawer: ctx.sender(),
     });
     withdraw_with_proof(self, &proof, withdraw_amount).into_coin(ctx)
 }
@@ -351,7 +379,7 @@ public fun validate_proof(balance_manager: &BalanceManager, proof: &PlayProof) {
 
 /// Destroys an empty BalanceManager and its cap.
 /// Can only be called by the owner and only when the balance is zero.
-public fun destroy_empty(self: BalanceManager, cap: BalanceManagerCap) {
+public fun destroy_empty(self: BalanceManager, cap: BalanceManagerCap, ctx: &TxContext) {
     self.validate_owner(&cap);
     self.validate_balance_empty();
 
@@ -369,10 +397,11 @@ public fun destroy_empty(self: BalanceManager, cap: BalanceManagerCap) {
     emit(BalanceManagerDestroyedEvent {
         balance_manager_id,
         balance_manager_cap_id: cap_id,
+        destroyer: ctx.sender(),
     });
 }
 
-// === Public-Package Functions ===
+// === Package Functions ===
 /// Withdraws the provided amount from the `balance`. Fails if there are not sufficient funds.
 public(package) fun withdraw_with_proof(
     self: &mut BalanceManager,

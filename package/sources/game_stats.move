@@ -4,7 +4,7 @@ module openplay_core::game_stats;
 use openplay_core::transaction::Transaction;
 use sui::table::{Self, Table};
 
-// == Errors ==
+// === Errors ===
 /// Error code for unknown transaction types.
 const EUnknownTransaction: u64 = 1;
 /// Error code when requested epoch is not found in historic volumes.
@@ -33,7 +33,7 @@ public struct Volumes has copy, drop, store {
     win_count: u128,
 }
 
-// === Public-View Functions ===
+// === View Functions ===
 /// Returns the game ID associated with these statistics.
 public fun game_id(self: &GameStatistics): ID {
     self.game_id
@@ -81,13 +81,13 @@ public fun win_count(volumes: &Volumes): u128 {
     volumes.win_count
 }
 
-// === Public-Mutative Functions ===
+// === Public Functions ===
 /// Shares the GameStatistics object, making it publicly accessible.
 public fun share(self: GameStatistics) {
     transfer::share_object(self)
 }
 
-// == Public-Package Functions ==
+// === Package Functions ===
 
 /// Creates a new GameStatistics object for the given game ID.
 /// Initializes with zero volumes and sets the current epoch.

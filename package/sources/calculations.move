@@ -5,14 +5,12 @@ module openplay_core::calculations;
 use openplay_core::core_constants::max_bps;
 
 // === Errors ===
-/// Error code for when losses exceed the base amount.
-const ELossTooHigh: u64 = 1;
 /// Error code for when a calculation result would overflow u64.
 const EOverflow: u64 = 2;
 /// Error code for when denominator is zero (division by zero).
 const EDivisionByZero: u64 = 3;
 
-// === Public Helper Functions ===
+// === Public Functions ===
 /// Multiplies a value by a ratio (numerator/denominator), rounding DOWN (floor/truncating).
 /// Use this when the protocol pays out (e.g., profits to users).
 /// This favors the protocol by paying slightly less.
@@ -84,56 +82,4 @@ public fun mul_floor_bps(val: u64, bps: u64): u64 {
 /// ```
 public fun mul_ceil_bps(val: u64, bps: u64): u64 {
     mul_ceil(val, bps, max_bps())
-}
-
-/// Actualizes an amount to include a part of the profits or losses,
-/// such that the ratio between amount and base remains the same after added the profits or losses to base.
-/// This function returns new amount such that amount/base [before] = new_amount/(base + profits - losses) [after]
-/// e.g. if your base is 1 SUI and you have profits of 0.1 SUI, you have a profit of 10%
-/// so the provided amount will also be increased by 10%
-/// e.g. if your base is 1 SUI and you have a loss of 0.1 SUI, you have a loss of 10%
-/// so the provided amount will also be decreased by 10%
-///
-/// # Parameters
-/// - `amount`: The amount to actualize
-/// - `profits`: Profits to apply (must be 0 if losses > 0)
-/// - `losses`: Losses to apply (must be 0 if profits > 0)
-/// - `base`: The base amount used for calculating the ratio
-/// - `round_up`: If true, rounds UP (ceiling). If false, rounds DOWN (floor).
-///               The caller should choose based on what favors the protocol in their context.
-public(package) fun actualize_amount(
-    amount: u64,
-    profits: u64,
-    losses: u64,
-    base: u64,
-    round_up: bool,
-): u64 {
-    assert!(base > 0, EDivisionByZero);
-    let new_amount;
-    if (profits > 0) {
-        // new_amount = amount * (base + profits) / base
-        // Check for overflow in base + profits
-        let max_u64 = std::u64::max_value!();
-        assert!(base <= max_u64 - profits, EOverflow);
-        let new_base = base + profits;
-        if (round_up) {
-            new_amount = mul_ceil(amount, new_base, base);
-        } else {
-            new_amount = mul_floor(amount, new_base, base);
-        }
-    } else if (losses > 0) {
-        assert!(losses <= base, ELossTooHigh);
-        // new_amount = amount * (base - losses) / base
-        // base - losses is safe since we checked losses <= base
-        let new_base = base - losses;
-        if (round_up) {
-            new_amount = mul_ceil(amount, new_base, base);
-        } else {
-            new_amount = mul_floor(amount, new_base, base);
-        }
-    } else {
-        new_amount = amount;
-    };
-
-    new_amount
 }
