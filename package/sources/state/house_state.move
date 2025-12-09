@@ -372,8 +372,10 @@ public(package) fun process_collector_end_of_day(
             );
         };
 
-        // Reset GGR for new epoch
-        vec_map::insert(&mut self.current_collector_ggr, collector_id, empty_collector_ggr());
+        // Reset GGR for new epoch by modifying in place
+        let ggr_mut = vec_map::get_mut(&mut self.current_collector_ggr, &collector_id);
+        ggr_mut.bet_amount = 0;
+        ggr_mut.win_amount = 0;
 
         i = i + 1;
     };

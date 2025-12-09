@@ -729,8 +729,8 @@ public fun claim_house_fees_ok() {
     let ggr = 5_000;
     let expected_house_fee = mul_ceil_bps(ggr, house.house_fee_bps());
 
-    // Claim house fees
-    let house_fee_coin = house.admin_claim_house_fees(&admin_cap, scenario.ctx());
+    // Claim house fees (process_end_of_day is called internally)
+    let house_fee_coin = house.admin_claim_house_fees(&registry, &admin_cap, scenario.ctx());
     assert_eq!(house_fee_coin.value(), expected_house_fee);
 
     destroy(house);
@@ -777,16 +777,23 @@ public fun claim_collector_fees_multiple_collectors() {
     house.add_collector_fees_for_testing(fee_collector1_id, 100);
     house.add_collector_fees_for_testing(fee_collector2_id, 50);
 
-    // Claim fees for collector 1 (get shared reference)
+    // Claim fees - take shared references and verify IDs match caps
+    // Note: take_shared may return objects in LIFO order (last shared first)
     scenario.next_tx(addr);
-    let fee_collector1_ref = scenario.take_shared<fee_collector::FeeCollector>();
+    let ref1 = scenario.take_shared<fee_collector::FeeCollector>();
+    let ref2 = scenario.take_shared<fee_collector::FeeCollector>();
+    
+    // Match references to collectors based on ID
+    let (fee_collector1_ref, fee_collector2_ref) = if (ref1.id() == fee_collector1_id) {
+        (ref1, ref2)
+    } else {
+        (ref2, ref1)
+    };
+    
     let coin1 = house.claim_collector_fees(&registry, &fee_collector1_ref, &cap1, scenario.ctx());
     return_shared(fee_collector1_ref);
     assert!(coin1.value() == 100);
     
-    // Claim fees for collector 2 (get shared reference)
-    scenario.next_tx(addr);
-    let fee_collector2_ref = scenario.take_shared<fee_collector::FeeCollector>();
     let coin2 = house.claim_collector_fees(&registry, &fee_collector2_ref, &cap2, scenario.ctx());
     return_shared(fee_collector2_ref);
     assert!(coin2.value() == 50);

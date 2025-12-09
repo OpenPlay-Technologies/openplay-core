@@ -601,10 +601,14 @@ public fun tx_admin_process_transactions_v2_no_bm(
 /// Can only be called by the house admin.
 public fun admin_claim_house_fees(
     self: &mut House,
+    registry: &Registry,
     admin_cap: &HouseAdminCap,
     ctx: &mut TxContext,
 ): Coin<SUI> {
     self.assert_valid_admin_cap(admin_cap);
+
+    // Process any pending end-of-day first to ensure all fees are available
+    self.process_end_of_day(registry, ctx);
 
     let fee_coin = self.vault.withdraw_house_fees().into_coin(ctx);
     let current_epoch = ctx.epoch();
@@ -864,8 +868,8 @@ fun process_end_of_day(self: &mut House, registry: &Registry, ctx: &mut TxContex
             .state
             .process_end_of_day(
                 prev_epoch,
-                self.fee_collector_share_bps,
                 self.house_fee_bps,
+                self.fee_collector_share_bps,
                 protocol_fee_bps,
                 ctx,
             );

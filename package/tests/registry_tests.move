@@ -1,7 +1,7 @@
 #[test_only]
 module openplay_core::registry_tests;
 
-use openplay_core::core_constants::max_bps;
+use openplay_core::core_constants::{max_bps, max_protocol_fee_bps};
 use openplay_core::registry;
 use std::unit_test::destroy;
 use sui::test_scenario::begin;
@@ -71,8 +71,9 @@ public fun test_update_protocol_fee_bps_max_valid() {
     let mut registry = registry::registry_for_testing(scenario.ctx());
     let cap = registry::cap_for_testing(scenario.ctx());
     
-    // Test with maximum valid fee (9999 basis points = 99.99%)
-    let max_valid_fee = max_bps() - 1; // 9999 = 99.99%
+    // Test with maximum valid fee (2000 basis points = 20%)
+    // Protocol fee is capped at max_protocol_fee_bps() = 2000, not max_bps() - 1
+    let max_valid_fee = max_protocol_fee_bps(); // 2000 = 20%
     registry::update_protocol_fee_bps(&mut registry, &cap, max_valid_fee, scenario.ctx());
     
     assert!(registry::protocol_fee_bps(&registry) == max_valid_fee, 0);
