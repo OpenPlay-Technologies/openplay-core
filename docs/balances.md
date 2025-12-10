@@ -2,103 +2,91 @@
 
 ## Overview
 
-The OpenPlay protocol uses multiple balance types to manage funds across different contexts: staking, gameplay, fees, and user participations. This document explains each balance type, how they interact, and the flow of funds through the system.
+The OpenPlay protocol uses multiple balance types to manage funds across different contexts: shares, gameplay, fees, and user participations. This document explains each balance type, how they interact, and the flow of funds through the system.
+
+## v3.1 Share-Based Model
+
+OpenPlay v3.1 uses a **share-based participation model** where:
+- Houses are **always active** (no activation/deactivation cycles)
+- Users **buy and sell shares** instead of staking/unstaking
+- Shares are valued at **NAV (Net Asset Value)** per share
+- Proceeds from selling shares are **immediately available**
+- Fees are calculated from **GGR (Gross Gaming Revenue)** at epoch end
 
 ## Balance Categories
 
 Balances are organized into four main categories:
 
-1. **Vault Balances** - House-level fund storage and management
-2. **State Balances** - House-level stake tracking and activation
-3. **Participation Balances** - User-level stake and profit/loss tracking
+1. **Vault Balances** - House-level fund storage and fee collection
+2. **State Balances** - House-level share tracking and GGR volumes
+3. **Participation Balances** - User-level share ownership
 4. **Account Balances** - Player-level transaction tracking for gameplay
 
 ## Vault Balances
 
-The Vault is the central storage for all House funds. It manages the separation between funds available for gameplay and staked reserves.
+The Vault is the central storage for all House funds. It manages the house balance and collected fees.
 
-### Reserve Balance
+### House Balance
 
-**Location**: `Vault.reserve_balance`  
+**Location**: `Vault.house_balance`  
 **Type**: `Balance<SUI>`
 
-**Purpose**: The primary storage for all staked funds. This is where funds are held when not actively being used for gameplay.
+**Purpose**: The single balance for all house funds. This replaces the previous play/reserve balance separation.
 
 **Behavior**:
-- All new stakes are deposited into the reserve balance
-- Funds are moved from reserve to play balance when the house activates
-- At end of epoch, play balance is cleared back to reserve balance
-- Profits and losses are reflected in the reserve balance after end-of-day processing
+- All share purchases are deposited into house balance
+- Share sales withdraw from house balance
+- Game transaction settlements use house balance
+- Fees are deducted from house balance at epoch end
 
 **Operations**:
-- `vault.deposit(stake)` - Adds stake to reserve balance
-- `vault.withdraw(amount)` - Withdraws from reserve balance
-- `vault.fund_play_balance(target)` - Moves funds from reserve to play balance
-
-### Play Balance
-
-**Location**: `Vault.play_balance`  
-**Type**: `Balance<SUI>`
-
-**Purpose**: Funds actively available for game payouts. This balance is used during gameplay to settle wins and losses with players.
-
-**Behavior**:
-- Funded from reserve balance when house activates
-- Used for all game transaction settlements (bets and wins)
-- Fees are deducted from play balance during transaction processing
-- Cleared back to reserve balance at end of epoch
-
-**Operations**:
-- `vault.fund_play_balance(target)` - Funds from reserve (on activation)
-- `vault.settle_balance_manager()` - Transfers funds to/from balance managers
-- `vault.process_end_of_day()` - Clears back to reserve balance
-
-**Important**: If play balance runs out during an epoch, gameplay stops until the next epoch when it can be refunded.
+- `vault.deposit(stake)` - Adds funds to house balance (from share purchase)
+- `vault.withdraw(amount)` - Withdraws from house balance (for share sale)
+- `vault.settle_balance_manager()` - Transfers funds to/from balance managers during gameplay
 
 ### Collected Protocol Fees
 
 **Location**: `Vault.collected_protocol_fees`  
 **Type**: `Balance<SUI>`
 
-**Purpose**: Accumulates protocol fees collected from all game transactions. These fees go to the OpenPlay protocol.
+**Purpose**: Accumulates protocol fees collected from GGR at epoch end. These fees go to the OpenPlay protocol.
 
 **Behavior**:
-- Fees are deducted from play balance during transaction processing
+- Fees are calculated from GGR (bet - win) at epoch end
+- Collected based on `current_epoch_protocol_fee_bps` captured at epoch start
 - Accumulated over time until claimed by protocol admin
-- Collected per transaction based on `protocol_fee_bps` setting
 
 **Operations**:
-- `vault.process_protocol_fee(amount)` - Adds fee to collection
+- `vault.process_protocol_fee(amount)` - Adds fee to collection (at epoch end)
 - `vault.withdraw_protocol_fees()` - Claims all collected fees (admin only)
 
-### Collected Game Fees
+### Collected Collector Fees
 
-**Location**: `Vault.collected_game_fees`  
+**Location**: `Vault.collected_collector_fees`  
 **Type**: `VecMap<ID, Balance<SUI>>`
 
-**Purpose**: Accumulates game-specific fees collected from transactions. Each game has its own fee balance.
+**Purpose**: Accumulates fees for each fee collector based on their GGR.
 
 **Behavior**:
-- Fees are deducted from play balance during transaction processing
-- Tracked per game ID (each game has its own balance)
-- Collected per transaction based on `game_fee_bps` setting for that game
+- Fees are calculated per fee collector from their GGR at epoch end
+- Tracked per fee_collector_id (each collector has its own balance)
+- Calculated based on `current_epoch_fee_collector_share_bps` captured at epoch start
 
 **Operations**:
-- `vault.process_game_fee(game_id, amount)` - Adds fee to game's collection
-- `vault.withdraw_game_fees(game_id)` - Claims all collected fees for a game
+- `vault.process_collector_fee(fee_collector_id, amount)` - Adds fee to collector's collection
+- `vault.withdraw_collector_fees(fee_collector_id)` - Claims all collected fees for a collector
 
 ### Collected House Fees
 
 **Location**: `Vault.collected_house_fees`  
 **Type**: `Balance<SUI>`
 
-**Purpose**: Accumulates house performance fees (house admin fees) taken from profits each epoch.
+**Purpose**: Accumulates house performance fees taken from GGR each epoch.
 
 **Behavior**:
-- Collected during end-of-day processing when there are profits
-- Deducted from reserve balance (where profits are stored after end-of-day)
-- Calculated as a percentage of profits: `house_fee = profits * house_fee_bps / 10000`
-- Remaining profits (after house fee) are distributed to stakers
+- Collected during end-of-day processing from GGR
+- Calculated based on `current_epoch_house_fee_bps` captured at epoch start
+- Calculated as a percentage of GGR: `house_fee = ggr * house_fee_bps / 10000`
 
 **Operations**:
 - `vault.process_house_fee(amount)` - Adds fee to collection (during end-of-day)
@@ -106,146 +94,104 @@ The Vault is the central storage for all House funds. It manages the separation 
 
 ## State Balances
 
-The State tracks house-level stake management and activation status. These balances represent the aggregate stake across all participations.
+The State tracks house-level share management, fee rates, and GGR volumes.
 
-### Inactive Stake
+### Total Shares
 
-**Location**: `State.inactive_stake`  
+**Location**: `State.total_shares`  
 **Type**: `u64`
 
-**Purpose**: Stake that is available to be activated in the next cycle. This is the default state for all new stakes.
+**Purpose**: Total shares currently in circulation for this house.
 
 **Behavior**:
-- All new stakes start as inactive stake
-- When house activates, inactive stake becomes active stake
-- If house is inactive, unstakes are deducted directly from inactive stake
-- At end of epoch, active stake returns to inactive stake
+- Increases when users buy shares (mint_shares)
+- Decreases when users sell shares (burn_shares)
+- Used to calculate NAV per share
 
 **Operations**:
-- `state.add_stake(amount)` - Adds to inactive stake
-- `state.remove_inactive_stake(amount)` - Removes from inactive stake (when house inactive)
-- `state.activate()` - Moves inactive stake to active stake
+- `state.mint_shares(shares)` - Increases total shares
+- `state.burn_shares(shares)` - Decreases total shares
+- `state.total_shares()` - Returns current total
 
-### Active Stake
+### Current Epoch Fees
 
-**Location**: `State.active_stake`  
+**Location**: `State.current_epoch_protocol_fee_bps`, `State.current_epoch_house_fee_bps`, `State.current_epoch_fee_collector_share_bps`  
 **Type**: `u64`
 
-**Purpose**: Stake that is currently active and participating in profit/loss sharing for the current epoch.
+**Purpose**: Fee rates captured at epoch start, used for all calculations during the epoch.
 
 **Behavior**:
-- Set when house activates (from inactive stake)
-- Remains constant throughout the epoch (cannot change during active cycle)
-- Used as the base for calculating profit/loss shares
-- Returns to inactive stake at end of epoch
+- Captured at the start of each epoch during `process_end_of_day()`
+- Prevents mid-epoch fee changes from affecting calculations
+- Used for NAV calculation (pending fees) and actual fee deduction
 
-**Operations**:
-- `state.activate()` - Sets active stake from inactive stake
-- `state.process_end_of_day()` - Moves active stake back to inactive (with profits/losses applied)
+**Why Captured at Epoch Start**: This ensures fairness - users who buy/sell shares during an epoch know what fees will be applied.
 
-**Important**: Once a cycle starts, active stake cannot change until the next epoch. New stakes during an active cycle go to inactive stake and will activate next epoch.
+### Current Volumes
 
-### Pending Unstake
+**Location**: `State.current_volumes`  
+**Type**: `Volumes` struct
 
-**Location**: `State.pending_unstake`  
-**Type**: `u64`
+**Purpose**: Tracks bet and win volumes for the current epoch.
 
-**Purpose**: Stake that is currently active but has been requested for unstaking. Will be deactivated at the end of the current epoch.
+**Fields**:
+- `total_bet_amount: u64` - Total bets this epoch
+- `total_win_amount: u64` - Total wins this epoch
 
 **Behavior**:
-- Only exists when house is active
-- Represents active stake that users want to exit
-- At end of epoch, actualized based on profits/losses, then removed
-- If house is inactive, unstakes are processed immediately (no pending)
+- Updated during every transaction
+- Used to calculate GGR at epoch end: `GGR = bet_amount - win_amount`
+- Reset at epoch end (saved to history)
 
-**Operations**:
-- `state.add_pending_unstake(amount)` - Queues unstake for end of epoch
-- `state.process_end_of_day()` - Actualizes and removes pending unstake
+### Collector GGR
 
-**Actualization**: Pending unstake amounts are adjusted based on profits/losses:
-- If profits: `actual_unstake = floor(pending_unstake * (stake + profits) / stake)`
-- If losses: `actual_unstake = ceil(pending_unstake * (stake - losses) / stake)`
+**Location**: `State.current_collector_ggr`  
+**Type**: `VecMap<ID, CollectorGGR>`
+
+**Purpose**: Tracks bet and win amounts per fee collector for the current epoch.
+
+**Behavior**:
+- Updated during every transaction with the fee collector ID
+- Used to calculate per-collector fees at epoch end
+- Reset at epoch end (saved to historic_collector_ggr)
 
 ## Participation Balances
 
-Each user's Participation tracks their individual stake and profit/loss shares. These balances are user-specific.
+Each user's Participation tracks their share ownership in a house.
 
-### Stake
+### Shares
 
-**Location**: `Participation.stake`  
+**Location**: `Participation.shares`  
 **Type**: `u64`
 
-**Purpose**: The user's stake that is currently active and participating in profit/loss sharing.
+**Purpose**: The number of shares the user owns in this house.
 
 **Behavior**:
-- Increases when pending stake is activated (at end of epoch)
-- Increases/decreases based on profits/losses each epoch
-- Decreases when unstaked (immediately if house inactive, or queued if active)
-- Used as the base for calculating the user's share of profits/losses
+- Increases when user buys shares
+- Decreases when user sells shares
+- Multiplied by NAV to calculate current value
 
 **Operations**:
-- `participation.add_stake(amount, is_active)` - Adds stake (immediate if inactive, pending if active)
-- `participation.process_end_of_day()` - Activates pending stake, applies profits/losses
-- `participation.unstake_v2()` - Removes from stake (immediate or queued)
+- `participation.add_shares(shares)` - Increases share count
+- `participation.remove_shares(shares)` - Decreases share count
+- `participation.shares()` - Returns current share count
 
-### Pending Stake
+### Share Value (NAV)
 
-**Location**: `Participation.pending_stake`  
-**Type**: `u64`
+The value of a user's shares is calculated dynamically:
 
-**Purpose**: Stake that has been deposited but is waiting for the current epoch to end before becoming active.
+```
+value = shares * effective_house_balance / total_shares
+```
 
-**Behavior**:
-- Created when staking during an active house cycle
-- Cannot be unstaked directly (must wait for activation or cancel before activation)
-- Activated at end of epoch and added to stake
-- If unstaked before activation, immediately moved to claimable balance
+Where `effective_house_balance = house_balance - pending_fees`
 
-**Operations**:
-- `participation.add_stake(amount, is_active=true)` - Adds to pending stake
-- `participation.process_end_of_day()` - Activates pending stake to stake
-- `participation.unstake_v2()` - Can cancel pending stake (moves to claimable)
+**Pending fees** include:
+- Pending protocol fees (calculated from current epoch GGR)
+- Pending house fees (calculated from current epoch GGR)
+- Pending collector fees (calculated from current epoch GGR)
 
-**Why Pending?**: When a house is active, new stakes cannot be added to the active stake pool mid-epoch because it would interfere with profit/loss calculations. They must wait until the epoch ends.
-
-### Pending Unstake
-
-**Location**: `Participation.pending_unstake`  
-**Type**: `u64`
-
-**Purpose**: Active stake that has been requested for unstaking but must wait until the end of the current epoch.
-
-**Behavior**:
-- Only exists when house is active
-- Represents active stake that user wants to exit
-- At end of epoch, actualized based on profits/losses, then moved to claimable balance
-- If house is inactive, unstakes are processed immediately (no pending)
-
-**Operations**:
-- `participation.unstake_v2(amount, is_active=true)` - Queues unstake
-- `participation.process_end_of_day()` - Actualizes and moves to claimable balance
-
-**Actualization**: Like state-level pending unstake, this amount is adjusted based on profits/losses to ensure users bear their proportional share.
-
-### Claimable Balance
-
-**Location**: `Participation.claimable_balance`  
-**Type**: `u64`
-
-**Purpose**: Funds that are ready to be withdrawn by the user. This includes unstaked amounts and profits.
-
-**Behavior**:
-- Increases when:
-  - Pending unstake is actualized and released (at end of epoch)
-  - Pending stake is cancelled (unstaked before activation)
-  - Immediate unstakes (when house is inactive)
-- Decreases when user claims funds
-- Represents funds that are no longer staked and can be withdrawn
-
-**Operations**:
-- `participation.claim_all()` - Returns all claimable balance and resets to zero
-- `participation.process_end_of_day()` - Adds actualized unstake amounts
-- `participation.unstake_v2()` - Adds immediate unstakes or cancelled pending stake
+This ensures NAV reflects the true value after all fees are accounted for.
 
 ## Account Balances
 
@@ -263,10 +209,6 @@ Accounts track transaction-level balances for gameplay. Each balance manager has
 - Reset to zero after settlement
 - Used to calculate net settlement with credit balance
 
-**Operations**:
-- `account.debit(amount)` - Adds bet amount
-- `account.settle()` - Returns balance and resets to zero
-
 ### Credit Balance
 
 **Location**: `Account.credit_balance`  
@@ -278,10 +220,6 @@ Accounts track transaction-level balances for gameplay. Each balance manager has
 - Accumulates win amounts from transactions
 - Reset to zero after settlement
 - Used to calculate net settlement with debit balance
-
-**Operations**:
-- `account.credit(amount)` - Adds win amount
-- `account.settle()` - Returns balance and resets to zero
 
 **Settlement**: After processing transactions, the account is settled:
 - If `credit_balance > debit_balance`: Player wins, vault pays difference
@@ -299,33 +237,36 @@ Accounts track transaction-level balances for gameplay. Each balance manager has
 - Holds player's deposited funds
 - Used for game transactions (bets and wins)
 - Settled with house vault after each transaction batch
-- Separate from staking balances (which are in the vault)
+- Separate from participation (which tracks shares, not SUI)
 
 **Operations**:
 - `balance_manager.deposit(cap, coins)` - Adds funds
 - `balance_manager.withdraw(cap, amount)` - Removes funds
 - `vault.settle_balance_manager()` - Transfers funds to/from vault during gameplay
 
-**Note**: This is separate from participation balances. Balance manager funds are for gameplay, while participation balances are for staking in houses.
-
 ## Balance Flow Diagrams
 
-### Staking Flow
+### Share Purchase Flow
 
 ```
 User Wallet
     │
-    ├─► [Stake] ──► Vault.reserve_balance
-    │                      │
-    │                      ├─► State.inactive_stake
-    │                      │
-    │                      └─► Participation.pending_stake (if house active)
-    │                                  │
-    │                                  └─► [End of Epoch] ──► Participation.stake
+    └─► [buy_shares()] ──► Vault.house_balance
+                                │
+                                ├─► State.total_shares += new_shares
+                                │
+                                └─► Participation.shares += new_shares
+```
+
+### Share Sale Flow
+
+```
+Participation.shares
     │
-    └─► [Unstake] ◄─────── Claimable Balance ◄─────── [End of Epoch]
-                                                              │
-                                                              └─► Actualized Pending Unstake
+    └─► [sell_shares()] ──► State.total_shares -= sold_shares
+                                │
+                                └─► Vault.house_balance → User Wallet
+                                    (payout = shares * NAV)
 ```
 
 ### Gameplay Flow
@@ -335,200 +276,164 @@ BalanceManager.balance
     │
     ├─► [Bet] ──► Account.debit_balance
     │                    │
-    │                    └─► [Settlement] ──► Vault.play_balance
+    │                    └─► [Settlement] ──► Vault.house_balance
+    │                                         │
+    │                                         └─► State.current_volumes.total_bet_amount
+    │                                         └─► State.current_collector_ggr[fee_collector_id].bet_amount
     │
     └─► [Win] ◄─── Account.credit_balance
                           │
-                          └─► [Settlement] ◄─── Vault.play_balance
+                          └─► [Settlement] ◄─── Vault.house_balance
+                                                │
+                                                └─► State.current_volumes.total_win_amount
+                                                └─► State.current_collector_ggr[fee_collector_id].win_amount
 ```
 
-### House Activation Flow
+### End of Epoch Flow (GGR-Based Fees)
 
 ```
-Vault.reserve_balance
-    │
-    └─► [House Activates] ──► Vault.play_balance
-              │
-              └─► State.inactive_stake ──► State.active_stake
+State.current_volumes ──► [process_end_of_day()] ──► Calculate GGR
+                                                         │
+                                                         ├─► GGR = bet_amount - win_amount
+                                                         │
+                                                         ├─► [Calculate Fees from GGR]
+                                                         │   ├─► collector_fees = GGR * collector_share_bps
+                                                         │   ├─► house_fee = GGR * house_fee_bps
+                                                         │   └─► protocol_fee = GGR * protocol_fee_bps
+                                                         │
+                                                         ├─► [Move Fees to Vault]
+                                                         │   ├─► Vault.collected_collector_fees
+                                                         │   ├─► Vault.collected_house_fees
+                                                         │   └─► Vault.collected_protocol_fees
+                                                         │
+                                                         └─► [Capture New Epoch Fees]
+                                                             ├─► current_epoch_protocol_fee_bps
+                                                             ├─► current_epoch_house_fee_bps
+                                                             └─► current_epoch_fee_collector_share_bps
 ```
 
-### End of Epoch Flow
+## NAV Calculation
+
+NAV (Net Asset Value) per share determines the value of each share:
 
 ```
-Vault.play_balance ──► [End of Day] ──► Vault.reserve_balance
-                                                      │
-                                                      ├─► [Calculate Profits/Losses]
-                                                      │
-                                                      ├─► [Apply to Stake]
-                                                      │   Participation.stake += profits
-                                                      │   Participation.stake -= losses
-                                                      │
-                                                      ├─► [Actualize Pending Unstake]
-                                                      │   └─► Participation.claimable_balance
-                                                      │
-                                                      └─► [Activate Pending Stake]
-                                                          └─► Participation.stake
+NAV = effective_house_balance / total_shares
 ```
+
+Where:
+```
+effective_house_balance = house_balance - pending_fees
+pending_fees = protocol_fee + house_fee + collector_fees
+```
+
+### Example NAV Calculation
+
+1. House balance: 10,000 SUI
+2. Total shares: 10,000
+3. Current epoch GGR: 100 SUI
+4. Fee rates: 10% protocol, 20% house, 20% collector
+
+Calculation:
+- Protocol fee pending: 100 * 10% = 10 SUI
+- House fee pending: 100 * 20% = 20 SUI
+- Collector fee pending: 100 * 20% = 20 SUI
+- Total pending fees: 50 SUI
+- Effective house balance: 10,000 - 50 = 9,950 SUI
+- NAV per share: 9,950 / 10,000 = 0.995 SUI
+
+This ensures users who sell shares don't take more than their fair share before fees are deducted.
 
 ## Balance Invariants
 
 ### Vault Invariant
 
-The total value in the vault should equal the sum of all balances:
+The total value in the vault should equal:
 
 ```
-reserve_balance + play_balance + collected_protocol_fees + 
-sum(collected_game_fees) + collected_house_fees = Total Staked Funds
+house_balance + collected_protocol_fees + collected_house_fees + 
+sum(collected_collector_fees) = Total Deposited Funds - Total Withdrawn Funds
 ```
 
 ### State Invariant
 
-The state balances should match the aggregate of all participations:
-
 ```
-inactive_stake + active_stake = sum(all Participation.stake + Participation.pending_stake)
-pending_unstake = sum(all Participation.pending_unstake)
+total_shares = sum(all Participation.shares)
 ```
 
-### Participation Invariant
+### Participation Value Invariant
 
 For each participation:
-
 ```
-stake + pending_stake + claimable_balance = Total User Stake + Profits - Losses - Withdrawn
+shares * NAV = proportional share of effective_house_balance
 ```
-
-**Note**: `pending_unstake` is not included in the sum because it's still part of `stake` until actualized.
-
-## Balance Lifecycle Examples
-
-### Example 1: Staking in Inactive House
-
-1. User stakes 1000 SUI
-   - `Vault.reserve_balance` += 1000
-   - `State.inactive_stake` += 1000
-   - `Participation.stake` += 1000
-
-2. House activates (min_activation = 5000, total stake = 10000)
-   - `Vault.play_balance` += 10000 (from reserve)
-   - `State.active_stake` = 10000 (from inactive)
-   - `State.inactive_stake` = 0
-   - `Participation.stake` remains 1000 (now active)
-
-### Example 2: Staking in Active House
-
-1. House is active with 10000 active stake
-2. User stakes 500 SUI
-   - `Vault.reserve_balance` += 500
-   - `State.inactive_stake` += 500
-   - `Participation.pending_stake` += 500 (not active yet)
-
-3. End of epoch
-   - `Participation.pending_stake` → `Participation.stake`
-   - `Participation.pending_stake` = 0
-   - `Participation.stake` += 500
-
-### Example 3: Unstaking from Active House
-
-1. User has 1000 active stake, house is active
-2. User unstakes 300 SUI
-   - `Participation.pending_unstake` += 300
-   - `Participation.stake` remains 1000 (still active until end of epoch)
-
-3. End of epoch (with 100 SUI profits)
-   - Profits applied: `Participation.stake` = 1000 + 100 = 1100
-   - Actualize pending unstake: `actual = floor(300 * 1100 / 1000) = 330`
-   - `Participation.claimable_balance` += 330
-   - `Participation.stake` -= 330 = 770
-   - `Participation.pending_unstake` = 0
-
-### Example 4: Gameplay Transaction
-
-1. Player has 500 SUI in BalanceManager
-2. Player bets 100 SUI, wins 150 SUI
-   - `Account.debit_balance` = 100
-   - `Account.credit_balance` = 150
-   - `BalanceManager.balance` = 500
-
-3. Settlement
-   - Net: 150 - 100 = 50 SUI win
-   - `Vault.play_balance` -= 50 (pays player)
-   - `BalanceManager.balance` += 50 = 550
-   - `Account.debit_balance` = 0
-   - `Account.credit_balance` = 0
 
 ## Best Practices
 
 ### For Users
 
-1. **Understand Pending States**: 
-   - Stakes during active cycles become pending and activate next epoch
-   - Unstakes during active cycles become pending and are released next epoch
+1. **Understand NAV**: 
+   - Share value = shares × NAV
+   - NAV changes based on house performance and pending fees
 
-2. **Monitor Claimable Balance**:
-   - Regularly check and claim your claimable balance
-   - Unstaked amounts and profits accumulate here
+2. **Instant Liquidity**:
+   - Selling shares immediately returns funds
+   - No pending periods or claimable balances
 
 3. **Balance Manager vs Participation**:
-   - Balance Manager: For gameplay funds
-   - Participation: For staking in houses
+   - Balance Manager: For gameplay funds (SUI)
+   - Participation: For house ownership (shares)
    - These are separate systems
 
 ### For Developers
 
 1. **Always Process End of Day**:
-   - Call `process_end_of_day()` before checking balances
-   - Ensures all pending states are resolved
+   - Call `refresh_state()` before reading NAV
+   - Ensures fees are captured and state is current
 
-2. **Check House State**:
-   - Verify if house is active before staking/unstaking
-   - Active houses queue operations, inactive houses process immediately
+2. **Use Effective Balance for NAV**:
+   - `effective_house_balance()` accounts for pending fees
+   - Don't use raw `house_balance()` for NAV calculations
 
-3. **Account Settlement**:
-   - Always settle accounts after processing transactions
-   - Reset debit/credit balances for next batch
+3. **Track Fee Collectors**:
+   - Each game must have a fee collector assigned
+   - GGR is tracked per fee collector
 
 4. **Balance Invariants**:
    - Verify invariants hold after operations
-   - Helps catch bugs early
+   - Total shares must match sum of participations
 
 ## FAQ
 
-### Q: Why do I have pending stake?
+### Q: Why don't I have pending stake anymore?
 
-**A**: When you stake during an active house cycle, your stake must wait until the epoch ends to become active. This ensures fair profit/loss distribution.
+**A**: v3.1 uses shares instead of stake. When you buy shares, they're yours immediately. No waiting for epoch activation.
 
-### Q: Can I unstake my pending stake?
+### Q: What happened to claimable balance?
 
-**A**: Yes, you can cancel pending stake before it activates. It will be moved directly to your claimable balance.
+**A**: Removed. When you sell shares, you get SUI immediately. No separate claim step needed.
 
-### Q: What's the difference between stake and claimable balance?
+### Q: How do I know my share value?
 
-**A**: 
-- **Stake**: Active stake participating in profit/loss sharing
-- **Claimable Balance**: Funds ready to withdraw (unstaked amounts, profits)
+**A**: Use `house.nav(participation)` to get your current value, or calculate:
+```
+value = participation.shares() * house.effective_house_balance() / house.total_shares()
+```
 
-### Q: Why is my pending unstake different from what I requested?
+### Q: Why are fees captured at epoch start?
 
-**A**: Pending unstake is actualized at end of epoch based on profits/losses. If there were profits, you get more. If there were losses, you get less (proportional to your share).
+**A**: This ensures fairness. If fees could change mid-epoch, it would be unpredictable for users buying/selling shares.
 
-### Q: What happens if play balance runs out?
+### Q: What is GGR?
 
-**A**: Gameplay stops until the next epoch. The play balance is refunded from reserve balance at end of epoch, and if sufficient funds exist, the house reactivates.
+**A**: Gross Gaming Revenue = total bets - total wins. It represents the house's profit from gameplay before fees.
 
-### Q: How are fees collected?
+### Q: How are fees calculated?
 
-**A**: 
-- Protocol and game fees: Deducted from play balance during transactions
-- House fees: Deducted from reserve balance (profits) at end of epoch
+**A**: All fees (protocol, house, collector) are calculated as a percentage of GGR at epoch end, not per-transaction.
 
-### Q: Can I see all my balances?
+### Q: What if GGR is negative (house lost)?
 
-**A**: Yes, you can query:
-- `Participation.stake()` - Your active stake
-- `Participation.pending_stake()` - Pending stake
-- `Participation.claimable_balance()` - Claimable funds
-- `BalanceManager.balance()` - Your gameplay funds
+**A**: No fees are collected when GGR is negative. The loss is reflected in reduced NAV for shareholders.
 
 ## Related Documentation
 
@@ -540,10 +445,11 @@ stake + pending_stake + claimable_balance = Total User Stake + Profits - Losses 
 
 ## Summary
 
-- **Vault**: Stores all house funds (reserve, play, fees)
-- **State**: Tracks aggregate stake (inactive, active, pending unstake)
-- **Participation**: Tracks individual user stake and profits/losses
+- **Vault**: Stores house funds and collected fees (protocol, house, collector)
+- **State**: Tracks total shares, volumes, GGR, and epoch-captured fee rates
+- **Participation**: Tracks individual user share ownership
 - **Account**: Tracks transaction-level bets and wins
 - **Balance Manager**: Holds player gameplay funds
-- **Pending States**: Ensure fair profit/loss distribution across epochs
-- **Invariants**: All balances must sum correctly - funds cannot disappear
+- **NAV**: Share value = effective_house_balance / total_shares
+- **GGR-Based Fees**: All fees calculated from GGR at epoch end
+- **Immediate Liquidity**: Sell shares anytime, get SUI immediately

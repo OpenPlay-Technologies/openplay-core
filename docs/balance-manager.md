@@ -133,7 +133,7 @@ When the House settles balances with a BalanceManager:
 The settlement function ensures the BalanceManager has sufficient funds before processing:
 
 ```move
-// Vault validates and settles
+// Vault validates and settles (uses house_balance in v3.1)
 vault.settle_balance_manager(
     amount_out,      // How much player should receive
     amount_in,       // How much player bet
@@ -158,16 +158,32 @@ transfer::public_transfer(play_cap, recipient_address);
 
 **Limits**: Maximum 1000 PlayCaps per BalanceManager (prevents DoS attacks)
 
+You can check how many PlayCaps are currently allowed:
+```move
+let count = balance_manager.allow_list_length();
+```
+
 ### Revoking PlayCaps
 
 The owner can revoke a PlayCap to remove it from the allow list:
 
 ```move
 // Owner revokes a PlayCap
-balance_manager.revoke_play_cap(&balance_manager_cap, &play_cap_id);
+balance_manager.revoke_play_cap(&balance_manager_cap, &play_cap_id, ctx);
 ```
 
 **Note**: Revoking removes the PlayCap from the allow list, but the PlayCap object still exists. The holder should destroy it.
+
+### Pruning All PlayCaps
+
+The owner can revoke all PlayCaps at once by pruning the allow list:
+
+```move
+// Owner prunes the entire allow list
+balance_manager.prune_allow_list(&balance_manager_cap, ctx);
+```
+
+This is useful when you want to revoke all existing PlayCaps without tracking each one individually.
 
 ### Destroying PlayCaps
 
@@ -175,10 +191,10 @@ PlayCap holders can destroy their PlayCap:
 
 ```move
 // Simple destruction (if BalanceManager might not exist)
-balance_manager::destroy_play_cap(play_cap);
+balance_manager::destroy_play_cap(play_cap, ctx);
 
 // Recommended: Destroy and revoke (if BalanceManager exists)
-balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager);
+balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager, ctx);
 ```
 
 The `destroy_play_cap_and_revoke()` function is recommended because it:
@@ -349,22 +365,24 @@ public(package) fun settle_balance_manager(
     balance_manager.ensure_sufficient_funds(amount_in);
     
     if (amount_out > amount_in) {
-        // Player wins: Vault pays difference
+        // Player wins: Vault pays difference from house_balance
         let needed = amount_out - amount_in;
-        assert!(self.play_balance.value() >= needed, EInsufficientFunds);
-        let balance = self.play_balance.split(needed);
+        assert!(self.house_balance.value() >= needed, EInsufficientFunds);
+        let balance = self.house_balance.split(needed);
         balance_manager.deposit_with_proof(play_proof, balance);
     } else if (amount_in > amount_out) {
-        // Player loses: BalanceManager pays difference
+        // Player loses: BalanceManager pays difference to house_balance
         let balance = balance_manager.withdraw_with_proof(
             play_proof,
             amount_in - amount_out
         );
-        self.play_balance.join(balance);
+        self.house_balance.join(balance);
     };
     // If equal, no transfer needed
 }
 ```
+
+**Note**: In v3.1, there is a single `house_balance` instead of separate `play_balance` and `reserve_balance`. The house is always active.
 
 ## Use Cases
 
@@ -428,7 +446,7 @@ let proof = balance_manager.generate_proof_as_owner(&bm_cap, ctx);
 
 // Withdraw remaining funds
 let remainder = balance_manager.withdraw_all(&bm_cap, ctx);
-balance_manager.destroy_empty(bm_cap);
+balance_manager.destroy_empty(bm_cap, ctx);
 
 // Return remainder to player
 ```
@@ -462,17 +480,18 @@ balance_manager.destroy_empty(bm_cap);
 
 ## Events
 
-The BalanceManager emits events for all major operations:
+The BalanceManager emits events for all major operations. All events include the address of the user who performed the action:
 
-- `BalanceManagerCreatedEvent`: When a new balance manager is created
-- `DepositCompletedEvent`: When funds are deposited
-- `WithdrawalProcessedEvent`: When funds are withdrawn
-- `PlayCapMintedEvent`: When a PlayCap is minted
-- `PlayCapRevokedEvent`: When a PlayCap is revoked
-- `PlayCapDestroyedEvent`: When a PlayCap is destroyed
-- `BalanceManagerDestroyedEvent`: When a balance manager is destroyed
+- `BalanceManagerCreatedEvent`: When a new balance manager is created (includes `creator` address)
+- `DepositCompletedEvent`: When funds are deposited (includes `depositor` address)
+- `WithdrawalProcessedEvent`: When funds are withdrawn (includes `withdrawer` address)
+- `PlayCapMintedEvent`: When a PlayCap is minted (includes `minter` address)
+- `PlayCapRevokedEvent`: When a PlayCap is revoked (includes `revoker` address)
+- `PlayCapDestroyedEvent`: When a PlayCap is destroyed (includes `destroyer` address)
+- `BalanceManagerDestroyedEvent`: When a balance manager is destroyed (includes `destroyer` address)
+- `PlayCapAllowListPrunedEvent`: When all PlayCaps are pruned from the allow list (includes `pruner` address and `pruned_count`)
 
-These events can be used for tracking, analytics, and frontend updates.
+These events can be used for tracking, analytics, and frontend updates. The address fields help identify who performed each action.
 
 ## FAQ
 

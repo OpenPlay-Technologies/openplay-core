@@ -39,15 +39,18 @@ Houses operate in **epochs** (approximately 24 hours, aligned with Sui epochs):
 1. **During the Epoch**: 
    - Players place bets using whitelisted games
    - Wins and losses are settled in real-time
-   - Fees are collected from each transaction
+   - GGR (Gross Gaming Revenue) is tracked per fee collector
+   - Users can buy/sell shares at any time based on current NAV
 
 2. **End of Epoch**:
-   - Total profits or losses are calculated
-   - House performance fees are deducted (if profitable)
-   - Remaining profits are distributed proportionally to all stakers
-   - New stakes become active for the next epoch
+   - GGR is calculated (total bets - total wins)
+   - Fees are calculated from GGR and deducted from house balance:
+     - Protocol fee (to OpenPlay)
+     - House fee (to house admin)
+     - Collector fees (to game creators based on their GGR contribution)
+   - NAV per share is updated to reflect new house balance
 
-This epoch-based system ensures fair profit/loss sharing - everyone who stakes during an epoch shares proportionally in that epoch's results.
+This epoch-based system ensures fair fee calculation - fees are taken from actual house profits (GGR), and share value (NAV) reflects true house performance.
 
 ## Key Participants
 
@@ -61,20 +64,20 @@ Players enjoy provably fair games on any OpenPlay house. They:
 
 **Security**: Players maintain full control of their funds through the Balance Manager system. They can deposit, play, and withdraw at any time - even if a house is paused or upgrading.
 
-### Stakers (Liquidity Providers)
+### Shareholders (Liquidity Providers)
 
-Stakers provide liquidity to houses and earn proportional returns. They:
-- Create a **Participation** NFT for each house they want to stake in
-- Stake SUI tokens into the house
-- Earn a proportional share of house profits each epoch
-- Can unstake at any time (processed at end of epoch)
+Shareholders provide liquidity to houses by purchasing shares. They:
+- Create a **Participation** for each house they want to invest in
+- Buy shares with SUI tokens - shares are valued at NAV (Net Asset Value)
+- Share value increases/decreases based on house performance (GGR)
+- Can sell shares at any time and receive proceeds immediately
 
-**Returns**: Stakers earn based on:
-- House performance (profits from games)
-- Their stake size (proportional distribution)
-- House fee structure (performance fees reduce returns)
+**Returns**: Shareholders earn based on:
+- House performance (GGR = bets - wins)
+- Their share count (proportional to total shares)
+- Fees are deducted from GGR (protocol, house, and collector fees)
 
-**Risk**: Stakers bear losses if the house loses money during an epoch. Losses are shared proportionally, just like profits.
+**Risk**: Shareholders bear losses if the house loses money. The NAV per share decreases proportionally when players win more than they bet.
 
 ### House Operators
 
@@ -123,26 +126,35 @@ The OpenPlay protocol provides the core infrastructure:
 
 ## Fee Structure
 
-OpenPlay uses a multi-tier fee system that aligns incentives across all participants:
+OpenPlay uses a GGR-based (Gross Gaming Revenue) fee system that aligns incentives across all participants:
 
-### Transaction Fees (Per Bet)
+### GGR Calculation
 
-When a player places a bet, fees are deducted from the house edge:
+At the end of each epoch, GGR is calculated:
+```
+GGR = Total Bets - Total Wins
+```
 
-1. **Protocol Fee** (0-2%): Goes to OpenPlay protocol treasury
-2. **Game Fee** (configurable per game): Goes to the game instance owner
-3. **Remaining**: Goes to the house profit pool
+All fees are calculated as a percentage of GGR, not per-transaction.
 
-### House Performance Fee (Per Epoch)
+### Fee Types (All from GGR)
 
-At the end of each profitable epoch:
-- A percentage of profits (configurable, default 20%) goes to the house operator
-- Remaining profits are distributed proportionally to all stakers
+When the epoch ends with positive GGR (house profit):
 
-**Example**:
-- House makes 1000 SUI profit in an epoch
+1. **Protocol Fee** (0-20%): Goes to OpenPlay protocol treasury
+2. **Collector Fees** (configurable): Goes to fee collectors based on their games' GGR contribution
+3. **House Fee** (configurable): Goes to the house operator
+4. **Remaining GGR**: Reflected in increased NAV for shareholders
+
+**Note**: House fee + Collector share cannot exceed 50% to ensure shareholders receive at least 30% of GGR.
+
+### Example Fee Distribution
+
+- Epoch GGR: 1000 SUI
+- Protocol fee: 10% = 100 SUI → OpenPlay treasury
 - House fee: 20% = 200 SUI → House operator
-- Remaining: 800 SUI → Distributed to stakers proportionally
+- Collector share: 20% = 200 SUI → Distributed to fee collectors by their GGR
+- Remaining: 500 SUI → Increases house balance (NAV for shareholders)
 
 ## Security & Trust
 
@@ -153,12 +165,12 @@ At the end of each profitable epoch:
 - **No Lock-in**: You can withdraw funds at any time, even if a house is paused
 - **Transparent**: All transactions are on-chain and auditable
 
-### For Stakers
+### For Shareholders
 
-- **Proportional Sharing**: Profits and losses are shared proportionally - no preferential treatment
-- **Transparent Accounting**: All stake, profit, and loss calculations are on-chain
-- **No Lock-in**: You can unstake at any time (processed at end of epoch)
-- **House Control**: You choose which houses to stake in based on their game selection, fees, and track record
+- **Proportional Ownership**: Share value (NAV) reflects proportional ownership of house balance
+- **Transparent Accounting**: All share counts, balances, and GGR calculations are on-chain
+- **Instant Liquidity**: You can sell shares at any time and receive proceeds immediately
+- **House Control**: You choose which houses to invest in based on their game selection, fees, and track record
 
 ### For Operators
 
@@ -184,12 +196,12 @@ See [Upgrade Documentation](./upgrades.md) for details on how upgrades work and 
 - **Instant Settlement**: Wins and losses are settled immediately
 - **Multiple Houses**: Choose from different houses with different game selections
 
-### For Stakers
+### For Shareholders
 
 - **Passive Income**: Earn returns by providing liquidity to houses
-- **Diversification**: Stake in multiple houses to spread risk
-- **Transparent Returns**: See exactly how profits are calculated and distributed
-- **Flexible**: Stake and unstake based on house performance
+- **Diversification**: Buy shares in multiple houses to spread risk
+- **Transparent Returns**: See exactly how NAV is calculated from GGR
+- **Instant Liquidity**: Buy and sell shares anytime with immediate settlement
 
 ### For Operators
 
@@ -211,28 +223,31 @@ See [Upgrade Documentation](./upgrades.md) for details on how upgrades work and 
 
 **Registry**: Central protocol registry that tracks all houses, manages protocol fees, and handles version control for safe upgrades.
 
-**House**: Shared objects that process bet/win transactions, manage whitelisted games, handle fee distribution, and manage staking.
+**House**: Shared objects that process bet/win transactions, manage whitelisted games with fee collectors, handle GGR-based fee distribution, and manage shares.
 
-**Vault**: Stores all house assets, separating funds into:
-- **Reserve Balance**: Staked funds not currently in play
-- **Play Balance**: Funds actively used for game payouts
-- **Fee Balances**: Collected protocol, game, and house fees
+**Fee Collector**: Shared objects that group games for fee collection. Multiple games can share the same fee collector, and fees are calculated from GGR at epoch end.
 
-**Participation**: NFT-like objects that represent a user's stake in a house, tracking profit/loss over epochs.
+**Vault**: Stores all house assets:
+- **House Balance**: All funds available for the house (single balance, always active)
+- **Fee Balances**: Collected protocol, collector, and house fees
+
+**Participation**: Objects that represent a user's share ownership in a house, tracking share count.
 
 **Balance Manager**: Shared objects that hold player funds for gameplay, with delegatable PlayCaps for secure access control.
 
-**State**: Tracks house-level stake management, activation status, and epoch history.
+**State**: Tracks house-level share management, GGR volumes, and epoch-captured fee rates.
 
 ### Key Mechanics
 
-**Epoch-Based Profit/Loss**: Houses operate in epochs (~24 hours). At end of epoch, profits/losses are calculated and distributed proportionally to stakers.
+**Share-Based Participation**: Users buy/sell shares valued at NAV (Net Asset Value). Houses are always active - no activation cycles.
 
-**House Activation**: Houses must reach minimum stake threshold to activate. When active, funds move from reserve to play balance for gameplay.
+**GGR-Based Fees**: All fees (protocol, house, collector) are calculated from Gross Gaming Revenue (bets - wins) at epoch end.
 
-**Capability-Based Security**: Uses Sui capabilities (HouseAdminCap, HouseTransactionCap, PlayCap, etc.) for fine-grained access control.
+**Epoch Fee Capture**: Fee rates are captured at epoch start to ensure predictable calculations throughout the epoch.
 
-**Game Whitelisting**: House admins whitelist game instances (identified by UID) to allow them to process transactions.
+**Capability-Based Security**: Uses Sui capabilities (HouseAdminCap, HouseTransactionCap, FeeCollectorCap, PlayCap, etc.) for fine-grained access control.
+
+**Game Whitelisting with Fee Collectors**: House admins whitelist game instances AND assign them to fee collectors in a single operation.
 
 **Balance Separation**: Player funds (Balance Manager) are separate from house funds (Vault), ensuring players can always access their funds.
 
@@ -245,13 +260,13 @@ See [Upgrade Documentation](./upgrades.md) for details on how upgrades work and 
 3. Visit any OpenPlay house frontend
 4. Connect your wallet and start playing
 
-### As a Staker
+### As a Shareholder
 
-1. Browse available houses (check game selection, fees, historical returns)
-2. Create a Participation for the house you want to stake in
-3. Stake SUI tokens
-4. Monitor your returns each epoch
-5. Claim profits or unstake when ready
+1. Browse available houses (check game selection, fees, historical NAV performance)
+2. Create a Participation for the house you want to invest in
+3. Buy shares with SUI tokens (shares valued at current NAV)
+4. Monitor your share value as NAV changes
+5. Sell shares anytime to receive SUI immediately
 
 ### As an Operator
 
@@ -292,8 +307,8 @@ The protocol is currently in active development. Some features discussed (like g
 OpenPlay is **infrastructure for decentralized gambling**. It enables:
 
 - **Players** to enjoy provably fair games with full control of their funds
-- **Stakers** to earn returns by providing liquidity to houses
-- **Operators** to launch and operate their own casinos
-- **Developers** to create and monetize games
+- **Shareholders** to earn returns by providing liquidity to houses through share ownership
+- **Operators** to launch and operate their own casinos with GGR-based performance fees
+- **Developers** to create and monetize games through fee collectors
 
-All built on Sui blockchain with transparency, security, and permissionless access at its core.
+All built on Sui blockchain with transparency, security, and permissionless access at its core. The v3.1 share-based model provides instant liquidity and simplified participation with NAV-based valuation.

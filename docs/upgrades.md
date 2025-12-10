@@ -60,18 +60,19 @@ The pause mechanism uses version checks in specific functions:
 
 #### Functions WITH Version Checks (Can Be Paused)
 
-1. **`registry.protocol_fee_bps()`**: Called during transaction processing
+1. **`registry.check_version()`**: Called during transaction processing
    - If version is disabled, this aborts and blocks gameplay
    - Location: `house.move::tx_admin_process_transactions_v2()`
 
 2. **`registry.register_house()`**: Called when registering new houses
    - Prevents new houses from being created with disabled versions
 
+**Note**: In v3.1, `protocol_fee_bps()` no longer performs a version check. Use `check_version()` explicitly for gameplay operations.
+
 #### Functions WITHOUT Version Checks (Never Paused)
 
-1. **`house.stake()`**: Users can always stake funds
-2. **`house.unstake()`**: Users can always unstake funds
-3. **`house.claim_all()`**: Users can always claim their rewards
+1. **`house.buy_shares()`**: Users can always buy shares
+2. **`house.sell_shares()`**: Users can always sell shares and withdraw funds
 
 This design ensures that:
 - **Gameplay can be paused** for security, upgrades, or emergency situations
@@ -80,13 +81,13 @@ This design ensures that:
 ### Example: Pausing During Upgrade
 
 ```
-1. Admin disables version 1: registry.admin_disallow_version(version: 1)
+1. Admin disables version 1: registry.admin_disallow_version(version: 1, ctx)
    → All gameplay using version 1 stops immediately
-   → Users can still stake/unstake/claim (no version check)
+   → Users can still buy/sell shares (no version check)
 
 2. Admin upgrades package to version 2
 
-3. Admin allows version 2: registry.admin_allow_version(version: 2)
+3. Admin allows version 2: registry.admin_allow_version(version: 2, ctx)
    → Gameplay resumes with new version
    → All existing houses and funds work seamlessly
 ```

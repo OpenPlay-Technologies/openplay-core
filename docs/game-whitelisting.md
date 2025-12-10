@@ -8,17 +8,21 @@ Game whitelisting is a critical security process that ensures only safe, verifie
 
 ## Whitelisting Process
 
-### Current Implementation
+### Current Implementation (v3.1)
 
-In OpenPlay, game whitelisting works as follows:
+In OpenPlay v3.1, game whitelisting is combined with fee collector assignment:
 
-1. **Game Package Deployment**: Developer deploys a game package to Sui (must be immutable)
-2. **Game Instance Creation**: Developer creates a game instance with specific parameters
-3. **Off-Chain Verification**: House operator verifies the game meets all security requirements
-4. **Whitelisting**: House operator calls `house.admin_add_tx_allowed(game_id)` to whitelist the instance
-5. **Fee Configuration**: House operator sets the game fee via `house.admin_set_game_fee(game_id, fee_bps)`
+1. **Fee Collector Creation**: House admin creates a fee collector via `house.admin_create_fee_collector()`
+2. **Game Package Deployment**: Developer deploys a game package to Sui (must be immutable)
+3. **Game Instance Creation**: Developer creates a game instance with specific parameters
+4. **Off-Chain Verification**: House operator verifies the game meets all security requirements
+5. **Whitelisting with Fee Collector**: House operator calls `house.admin_add_tx_allowed_with_collector(game_id, fee_collector)` to whitelist the instance AND assign it to a fee collector
 
-**Important**: Whitelisting is done per **game instance** (identified by `game_id`), not per package. This allows operators to whitelist specific instances with verified parameters while rejecting others from the same package.
+**Important**: 
+- Whitelisting is done per **game instance** (identified by `game_id`), not per package
+- Each game MUST be assigned to a fee collector when whitelisted
+- Multiple games can share the same fee collector
+- Fees are calculated from GGR (Gross Gaming Revenue) at epoch end, not per-transaction
 
 ### Future Standard Procedure
 
@@ -90,7 +94,7 @@ The following checks are **mandatory** before whitelisting any game:
   3. Generate random outcome (RNG)
   4. Calculate win amount
   5. Submit transactions
-- Verify the check uses `house.play_balance()` or similar to verify available funds
+- Verify the check uses `house.ensure_sufficient_funds()` or `house.house_balance()` to verify available funds
 - Ensure the check happens before any randomness is generated
 
 **Example Correct Flow**:
@@ -100,7 +104,7 @@ assert!(bet_amount >= min_bet && bet_amount <= max_bet, EInvalidBet);
 
 // 2. Check sufficient funds BEFORE RNG
 let max_payout = calculate_max_payout(bet_amount);
-assert!(house.play_balance() >= max_payout, EInsufficientFunds);
+house.ensure_sufficient_funds(max_payout);  // Uses house_balance
 
 // 3. Generate random outcome
 let random_value = sui::random::random(ctx);
@@ -110,7 +114,7 @@ let outcome = determine_outcome(random_value, bet_amount);
 let win_amount = calculate_win(outcome, bet_amount);
 
 // 5. Submit transactions
-house.process_transactions(...);
+house.tx_admin_process_transactions_v2(...);
 ```
 
 **Risk if Skipped**: House could be forced into bankruptcy by games submitting wins when insufficient funds exist.
@@ -462,7 +466,7 @@ Use this checklist when verifying a game for whitelisting:
 
 If a whitelisted game shows suspicious behavior or security issues:
 
-1. **Immediate Revocation**: Call `house.admin_revoke_tx_allowed(game_id)` to immediately stop the game
+1. **Immediate Revocation**: Call `house.admin_revoke_tx_allowed(game_id)` to immediately stop the game and unassign its fee collector
 2. **Investigation**: Investigate the issue thoroughly
 3. **Communication**: Inform stakers and players if necessary
 4. **Documentation**: Document the issue and resolution
@@ -492,11 +496,13 @@ This document will be updated as the standard procedure is formalized.
 **Verification Steps**:
 1. ✅ Package is immutable
 2. ✅ Logic: 50/50 chance, correct win calculation (bet * 2 * (1 - house_edge))
-3. ✅ Funds check: Verifies `house.play_balance() >= bet * 2` before RNG
+3. ✅ Funds check: Verifies `house.ensure_sufficient_funds(bet * 2)` before RNG
 4. ✅ Parameters: Min bet, max bet, house edge in ParameterStore from OpenPlay Core
 5. ✅ ParameterStore validation: Game asserts `param_store.id() == self.param_store_id` before reading
 6. ✅ Admin cap: Only allows fee collection, no game logic changes
 7. ✅ Resource attacks: Win path (bet + win) costs more gas than lose path (bet only)
+
+**Whitelisting**: Use `house.admin_add_tx_allowed_with_collector(game_id, fee_collector)` to whitelist and assign fee collector
 
 **Result**: ✅ Safe to whitelist
 

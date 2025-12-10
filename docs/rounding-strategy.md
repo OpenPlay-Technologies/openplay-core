@@ -12,7 +12,7 @@ The protocol provides two fundamental rounding functions in the `calculations` m
 
 ### 1. `mul_floor(val, numerator, denominator)` - Round DOWN
 
-**When to use:** When the protocol **pays out** funds (e.g., profits to users)
+**When to use:** When the protocol **pays out** funds (e.g., share sales, NAV calculations)
 
 **Formula:** `floor(val * num / den) = (val * num) / den` (truncated)
 
@@ -20,7 +20,7 @@ The protocol provides two fundamental rounding functions in the `calculations` m
 
 **Example:**
 ```move
-// User should receive 10.5 MIST, but protocol pays 10 MIST
+// User should receive 333.33 MIST, but protocol pays 333 MIST
 mul_floor(1000, 1, 3) = 333  // 1000 * 1 / 3 = 333.33... → 333
 ```
 
@@ -34,7 +34,7 @@ mul_floor(1000, 1, 3) = 333  // 1000 * 1 / 3 = 333.33... → 333
 
 **Example:**
 ```move
-// User should owe 10.5 MIST, but protocol collects 11 MIST
+// User should owe 333.33 MIST, but protocol collects 334 MIST
 mul_ceil(1000, 1, 3) = 334  // 1000 * 1 / 3 = 333.33... → 334
 ```
 
@@ -49,129 +49,82 @@ These are convenience wrappers that use `max_bps() = 10,000` as the denominator.
 
 ## Rounding Locations in the Protocol
 
-### 1. Fee Calculations
+### 1. GGR-Based Fee Calculations (Epoch End)
 
-**Location:** `house_state.move::calculate_fee()`
+**Location:** `house_state.move::process_end_of_day()`
 
-**Function:** `mul_ceil_bps(tx.amount(), fee_bps)`
+**Functions:** 
+- `mul_ceil_bps(ggr, protocol_fee_bps)` - Protocol fee
+- `mul_ceil_bps(ggr, house_fee_bps)` - House fee  
+- `mul_ceil_bps(ggr, fee_collector_share_bps)` - Collector fees
 
 **Rounding Direction:** **UP** (ceiling)
 
-**Rationale:** Fees are amounts users owe to the protocol. Rounding up ensures the protocol collects slightly more fees.
+**Rationale:** Fees are amounts owed to the protocol, house admin, and game creators. Rounding up ensures these parties collect slightly more fees.
 
 **Example:**
 ```move
-// Transaction amount: 1000 MIST
-// Fee: 1% (100 bps)
-// Exact fee: 10.0 MIST
-// Collected fee: 10 MIST (exact in this case)
-// If exact was 10.1 MIST, protocol would collect 11 MIST
+// GGR: 1000 MIST
+// Protocol fee: 10% (1000 bps)
+// Exact fee: 100.0 MIST
+// Collected fee: 100 MIST (exact in this case)
+// If exact was 100.1 MIST, protocol would collect 101 MIST
 ```
 
 **Applies to:**
-- Game fees (collected by game owners)
 - Protocol fees (collected by OpenPlay admin)
+- House performance fees (collected by house admin)
+- Collector fees (collected by game creators)
 
-### 2. House Performance Fee
+### 2. NAV Calculation for Share Sales
 
-**Location:** `house.move::process_end_of_day()`
+**Location:** `house.move::sell_shares()`
 
-**Function:** `mul_ceil_bps(profits, house_fee_bps)`
-
-**Rounding Direction:** **UP** (ceiling)
-
-**Rationale:** Performance fees are deducted from profits. Rounding up ensures the house admin collects slightly more fees, leaving slightly less for stakers.
-
-**Example:**
-```move
-// Profits: 1000 MIST
-// House fee: 20% (2000 bps)
-// Exact fee: 200.0 MIST
-// Collected fee: 200 MIST
-// If exact was 200.1 MIST, house would collect 201 MIST
-```
-
-### 3. Profit Distribution to Stakers
-
-**Location:** `house_state.move::calculate_ggr_share()`
-
-**Function:** `mul_floor(end_of_day.day_profits, account_stake, epoch_volume.active_stake_amount)`
+**Function:** `mul_floor(shares_to_sell, effective_value, total_shares)`
 
 **Rounding Direction:** **DOWN** (floor)
 
-**Rationale:** Profits are amounts the protocol pays to stakers. Rounding down ensures the protocol pays slightly less, creating a small surplus.
+**Rationale:** When users sell shares, the payout is calculated from NAV. Rounding down ensures the protocol pays slightly less.
 
 **Example:**
 ```move
-// Total profits: 1000 MIST
-// User stake: 333 MIST
-// Total stake: 1000 MIST
-// User's share: 33.3%
-// Exact profit: 333.33... MIST
-// User receives: 333 MIST (rounded down)
-// Remaining: 0.33... MIST stays in vault
+// Shares to sell: 1000
+// Effective house balance: 10,500 MIST
+// Total shares: 10,000
+// Exact payout: 1050.0 MIST
+// User receives: 1050 MIST (exact in this case)
+// If exact was 1050.5 MIST, user would receive 1050 MIST
 ```
 
-### 4. Loss Distribution to Stakers
+### 3. Share Calculation for Purchases
 
-**Location:** `house_state.move::calculate_ggr_share()`
+**Location:** `house.move::buy_shares()`
 
-**Function:** `mul_ceil(end_of_day.day_losses, account_stake, epoch_volume.active_stake_amount)`
-
-**Rounding Direction:** **UP** (ceiling)
-
-**Rationale:** Losses are amounts users owe (their stake decreases). Rounding up ensures users absorb slightly more losses than their exact proportional share, ensuring all losses are fully distributed.
-
-**Example:**
-```move
-// Total losses: 1000 MIST
-// User stake: 333 MIST
-// Total stake: 1000 MIST
-// User's share: 33.3%
-// Exact loss: 333.33... MIST
-// User loses: 334 MIST (rounded up)
-// This ensures total losses are fully absorbed
-```
-
-### 5. Unstake Amount Actualization (with Profits)
-
-**Location:** `participation.move::process_end_of_day()` and `house_state.move::process_end_of_day()`
-
-**Function:** `actualize_amount(pending_unstake, profits, 0, prev_active_stake, round_up=false)`
+**Function:** `mul_floor(deposit_amount, total_shares, effective_value)`
 
 **Rounding Direction:** **DOWN** (floor)
 
-**Rationale:** When there are profits, the unstake amount increases. Rounding down ensures the user receives slightly less than the exact amount, favoring the protocol.
+**Rationale:** When users buy shares, we calculate how many shares their deposit buys. Rounding down means users get slightly fewer shares, favoring the protocol.
 
 **Example:**
 ```move
-// Pending unstake: 1000 MIST
-// Profits: 100 MIST (10% profit)
-// Base stake: 1000 MIST
-// Exact unstake: 1100 MIST
-// User receives: 1100 MIST (exact in this case)
-// If exact was 1100.1 MIST, user would receive 1100 MIST
+// Deposit: 1000 MIST
+// Effective house balance: 10,000 MIST
+// Total shares: 10,000
+// Exact shares: 1000.0 shares
+// User gets: 1000 shares (exact in this case)
+// If exact was 1000.5 shares, user would get 1000 shares
 ```
 
-### 6. Unstake Amount Actualization (with Losses)
+### 4. Pending Fee Calculations for NAV
 
-**Location:** `participation.move::process_end_of_day()` and `house_state.move::process_end_of_day()`
+**Location:** `house_state.move::calculate_total_pending_fees()`
 
-**Function:** `actualize_amount(pending_unstake, 0, losses, prev_active_stake, round_up=true)`
+**Function:** `mul_ceil_bps(ggr, total_fee_bps)`
 
 **Rounding Direction:** **UP** (ceiling)
 
-**Rationale:** When there are losses, the unstake amount decreases. Rounding up ensures the user receives even less (or the protocol keeps more), favoring the protocol.
-
-**Example:**
-```move
-// Pending unstake: 1000 MIST
-// Losses: 100 MIST (10% loss)
-// Base stake: 1000 MIST
-// Exact unstake: 900 MIST
-// User receives: 900 MIST (exact in this case)
-// If exact was 899.9 MIST, user would receive 900 MIST (rounded up)
-```
+**Rationale:** When calculating NAV, pending fees are subtracted from house balance. Rounding fees UP means effective balance is slightly LOWER, giving users slightly less value per share. This favors the protocol.
 
 ## Mathematical Formulas
 
@@ -205,24 +158,24 @@ result = floor/ceil(val * bps / 10000)
 
 | Operation | Max Error | Frequency | Cumulative Impact |
 |-----------|-----------|-----------|-------------------|
-| Fee calculation | 1 MIST | Per transaction | Negligible |
-| Profit distribution | 1 MIST | Per user per epoch | Small surplus in vault |
-| Loss distribution | 1 MIST | Per user per epoch | Ensures full loss absorption |
-| Unstake actualization | 1 MIST | Per unstake | Small surplus in vault |
+| Fee calculation | 1 MIST | Per epoch per fee type | Negligible |
+| Share purchase | 1 share | Per purchase | Small surplus |
+| Share sale | 1 MIST | Per sale | Small surplus |
+| NAV calculation | 1 MIST | Per NAV query | Favors protocol |
 
 ### Cumulative Effect
 
 Over time, rounding errors accumulate in the vault as small surpluses:
 
-- **Per transaction:** Maximum 1 MIST rounding error
-- **Per epoch:** Maximum 1 MIST per user for profit/loss distribution
+- **Per epoch:** Maximum 1 MIST rounding error per fee type
+- **Per transaction:** Maximum 1 MIST or 1 share rounding error
 - **Long-term:** These small amounts accumulate in the vault, creating a safety buffer
 
 **Example Scenario:**
-- 1,000 users
-- 10,000 epochs
-- Average 1 MIST rounding error per user per epoch
-- Total accumulation: ~10,000,000 MIST = 0.01 SUI
+- 1,000 share transactions per epoch
+- 100 epochs
+- Average 1 MIST rounding error per transaction
+- Total accumulation: ~100,000 MIST = 0.0001 SUI
 
 This is a **bounded and negligible** amount that provides a small safety buffer for the protocol.
 
@@ -237,10 +190,9 @@ All rounding functions:
 
 ### Error Handling
 
-The rounding functions handle three error cases:
+The rounding functions handle two error cases:
 - **`EDivisionByZero`**: Denominator is zero
 - **`EOverflow`**: Result would exceed `u64::MAX`
-- **`ELossTooHigh`**: Losses exceed base (in `actualize_amount`)
 
 ### No Precision Error Allowance
 
@@ -254,63 +206,62 @@ Use this matrix to determine which rounding function to use:
 |----------|----------------------------|-------------------|----------|
 | Protocol pays users | Protocol (pays less) | DOWN (floor) | `mul_floor` / `mul_floor_bps` |
 | Users owe protocol | Protocol (collects more) | UP (ceiling) | `mul_ceil` / `mul_ceil_bps` |
-| Profit distribution | Protocol (pays less) | DOWN (floor) | `mul_floor` |
-| Loss distribution | Protocol (users owe more) | UP (ceiling) | `mul_ceil` |
-| Fee collection | Protocol (collects more) | UP (ceiling) | `mul_ceil_bps` |
-| Unstake with profits | Protocol (pays less) | DOWN (floor) | `actualize_amount(..., round_up=false)` |
-| Unstake with losses | Protocol (keeps more) | UP (ceiling) | `actualize_amount(..., round_up=true)` |
+| Fee collection (GGR-based) | Protocol (collects more) | UP (ceiling) | `mul_ceil_bps` |
+| Share sale payout | Protocol (pays less) | DOWN (floor) | `mul_floor` |
+| Share purchase calculation | Protocol (gives fewer shares) | DOWN (floor) | `mul_floor` |
+| Pending fee calculation | Protocol (lower NAV) | UP (ceiling) | `mul_ceil_bps` |
 
 ## Examples
 
-### Example 1: Fee Calculation
+### Example 1: GGR-Based Fee Calculation
 ```move
-// Transaction: 1000 MIST bet
-// Game fee: 1% (100 bps)
-let fee = mul_ceil_bps(1000, 100);
-// Result: 10 MIST (exact in this case)
-// If amount was 1001 MIST: fee = 11 MIST (rounded up from 10.01)
+// GGR: 1000 MIST (bet - win for the epoch)
+// Protocol fee: 10% (1000 bps)
+let protocol_fee = mul_ceil_bps(1000, 1000);
+// Result: 100 MIST (exact in this case)
+// If GGR was 1001 MIST: fee = 101 MIST (rounded up from 100.1)
 ```
 
-### Example 2: Profit Distribution
+### Example 2: Share Sale
 ```move
-// Total profits: 1000 MIST
-// User stake: 333 MIST
-// Total stake: 1000 MIST
-let user_profit = mul_floor(1000, 333, 1000);
-// Result: 333 MIST (rounded down from 333.33...)
-// Remaining 0.33... MIST stays in vault
+// Shares to sell: 333 shares
+// Effective house balance: 10,000 MIST
+// Total shares: 10,000
+let payout = mul_floor(333, 10000, 10000);
+// Result: 333 MIST (exact in this case)
+// Remaining shares worth 9667 MIST
 ```
 
-### Example 3: Loss Distribution
+### Example 3: Share Purchase
 ```move
-// Total losses: 1000 MIST
-// User stake: 333 MIST
-// Total stake: 1000 MIST
-let user_loss = mul_ceil(1000, 333, 1000);
-// Result: 334 MIST (rounded up from 333.33...)
-// Ensures all losses are fully absorbed
+// Deposit: 333 MIST
+// Effective house balance: 10,000 MIST
+// Total shares: 10,000
+let shares_minted = mul_floor(333, 10000, 10000);
+// Result: 333 shares (exact in this case)
+// If deposit was 333.5 MIST: still 333 shares (rounded down)
 ```
 
-### Example 4: Unstake with Profits
+### Example 4: Collector Fee Calculation
 ```move
-// Pending unstake: 1000 MIST
-// Profits: 100 MIST (10% profit)
-// Base stake: 1000 MIST
-let actual_unstake = actualize_amount(1000, 100, 0, 1000, false);
-// Calculation: 1000 * 1100 / 1000 = 1100 MIST
-// Result: 1100 MIST (exact in this case)
+// Collector GGR: 500 MIST
+// Collector share: 20% (2000 bps)
+let collector_fee = mul_ceil_bps(500, 2000);
+// Result: 100 MIST (exact in this case)
+// If GGR was 501 MIST: fee = 101 MIST (rounded up from 100.2)
 ```
 
-### Example 5: Unstake with Losses
-```move
-// Pending unstake: 1000 MIST
-// Losses: 100 MIST (10% loss)
-// Base stake: 1000 MIST
-let actual_unstake = actualize_amount(1000, 0, 100, 1000, true);
-// Calculation: 1000 * 900 / 1000 = 900 MIST
-// Result: 900 MIST (exact in this case)
-// If calculation resulted in 899.9, would round up to 900
-```
+## Changes from v2.1
+
+In v3.1, the following rounding-related changes were made:
+
+1. **Removed `actualize_amount()` function**: No longer needed in share-based model
+2. **Removed stake profit/loss distribution**: Shares have NAV instead
+3. **Added GGR-based fee calculations**: All fees from epoch GGR
+4. **Added share purchase/sale rounding**: NAV-based calculations
+5. **Removed `ELossTooHigh` error**: No longer applicable
+
+The core principle remains: **all rounding favors the protocol**.
 
 ## Summary
 
@@ -319,8 +270,8 @@ The OpenPlay protocol uses a **strict protocol-favoring rounding strategy**:
 1. **When protocol pays:** Round DOWN (floor) → Protocol pays less
 2. **When users owe:** Round UP (ceiling) → Protocol collects more
 3. **No tolerance:** All calculations must be exact or round according to strategy
-4. **Bounded impact:** Maximum 1 MIST rounding error per operation
+4. **Bounded impact:** Maximum 1 MIST or 1 share rounding error per operation
 5. **Cumulative effect:** Small surpluses accumulate in vault over time
+6. **GGR-based fees:** All fees calculated from Gross Gaming Revenue at epoch end
 
 This ensures that all rounding errors work in favor of the protocol, creating a small safety buffer while maintaining strict accounting accuracy.
-
