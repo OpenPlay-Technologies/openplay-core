@@ -53,7 +53,6 @@ public struct House has key {
     id: UID,
     admin_cap_id: ID,
     private: bool, // Staking becomes an admin-only function
-    min_activation_balance: u64,
     house_fee_bps: u64, // Performance fee taken from GGR (in basis points)
     fee_collector_share_bps: u64, // Fee collector share of GGR (in basis points)
     game_fee_collectors: VecMap<ID, ID>, // game_id -> fee_collector_id (also serves as allow list)
@@ -84,7 +83,6 @@ public struct HouseCreatedEvent has copy, drop {
     house_id: ID,
     admin_cap_id: ID,
     private: bool, // Whether the house is private (admin-only staking)
-    min_activation_balance: u64, // Minimum activation balance
     house_fee_bps: u64, // House performance fee in basis points
     fee_collector_share_bps: u64, // Fee collector share in basis points
 }
@@ -808,7 +806,6 @@ public fun openplay_admin_new_house(
     _openplay_admin_cap: &OpenPlayAdminCap,
     registry: &Registry,
     private: bool,
-    min_activation_balance: u64,
     house_fee_bps: u64,
     fee_collector_share_bps: u64,
     ctx: &mut TxContext,
@@ -839,7 +836,6 @@ public fun openplay_admin_new_house(
             fee_collector_share_bps,
             ctx,
         ),
-        min_activation_balance,
         house_fee_bps,
         fee_collector_share_bps,
         game_fee_collectors: vec_map::empty(),
@@ -853,7 +849,6 @@ public fun openplay_admin_new_house(
         house_id: house.id(),
         admin_cap_id: admin_cap.id.to_inner(),
         private,
-        min_activation_balance,
         house_fee_bps,
         fee_collector_share_bps,
     });
@@ -1010,7 +1005,6 @@ public fun tx_cap_for_testing(house: &mut House, game_id: ID): HouseTransactionC
 #[test_only]
 public fun new_for_testing(
     private: bool,
-    min_activation_balance: u64,
     house_fee_bps: u64,
     fee_collector_share_bps: u64,
     protocol_fee_bps: u64,
@@ -1037,7 +1031,6 @@ public fun new_for_testing(
             fee_collector_share_bps,
             ctx,
         ),
-        min_activation_balance,
         house_fee_bps,
         fee_collector_share_bps,
         game_fee_collectors: vec_map::empty(),
@@ -1051,7 +1044,6 @@ public fun new_for_testing(
         house_id: house.id(),
         admin_cap_id: admin_cap.id.to_inner(),
         private,
-        min_activation_balance,
         house_fee_bps,
         fee_collector_share_bps,
     });

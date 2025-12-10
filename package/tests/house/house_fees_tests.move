@@ -393,7 +393,6 @@ fun new_house_fees_too_high_fails() {
         &openplay_admin_cap,
         &registry,
         false,
-        100_000,
         3000,
         3000,
         scenario.ctx(),

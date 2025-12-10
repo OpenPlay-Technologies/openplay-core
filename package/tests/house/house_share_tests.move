@@ -807,7 +807,6 @@ fun effective_house_balance_zero_when_fees_exceed_value() {
     // Create house with very high fees (50% total)
     let (mut house, admin_cap) = openplay_core::house::new_for_testing(
         false,
-        100_000,
         2500, // 25% house fee
         2500, // 25% collector fee
         50,   // 0.5% protocol fee
@@ -988,7 +987,6 @@ fun private_house_admin_buy_sell_shares() {
         &openplay_admin_cap,
         &registry,
         true, // private
-        100_000,
         2000,
         1000,
         scenario.ctx(),
@@ -1026,7 +1024,6 @@ fun sell_shares_when_effective_value_is_zero() {
     // Create house with maximum fees (50%)
     let (mut house, admin_cap) = openplay_core::house::new_for_testing(
         false,
-        100_000,
         2500, // 25% house fee
         2500, // 25% collector fee
         50,   // 0.5% protocol fee

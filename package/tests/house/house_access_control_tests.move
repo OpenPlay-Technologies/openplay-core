@@ -107,7 +107,6 @@ fun private_house_admin_can_create_participation() {
         &openplay_admin_cap,
         &registry,
         true, // private
-        100_000,
         2000,
         1000,
         scenario.ctx(),
@@ -136,7 +135,6 @@ fun private_house_non_admin_cannot_create_participation() {
         &openplay_admin_cap,
         &registry,
         true, // private
-        100_000,
         2000,
         1000,
         scenario.ctx(),

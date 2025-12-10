@@ -46,7 +46,6 @@ public fun fund_house_for_playing(
 public fun default_house(ctx: &mut TxContext): (House, HouseAdminCap) {
     let (house, house_admin) = house::new_for_testing(
         false,
-        100_000,
         2000, // 20% house fee (performance fee)
         1000, // 10% fee collector share
         50,   // 0.5% protocol fee (from registry_for_testing)
