@@ -2,7 +2,6 @@
 module openplay_core::registry_tests;
 
 use openplay_core::core_constants::{current_version, max_bps, max_protocol_fee_bps};
-use openplay_core::game_stats;
 use openplay_core::registry;
 use std::unit_test::destroy;
 use sui::test_scenario::begin;

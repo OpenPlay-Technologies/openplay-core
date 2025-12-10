@@ -2,7 +2,6 @@
 module openplay_core::parameter_store_tests;
 
 use openplay_core::parameter_store;
-use std::string;
 use std::unit_test::destroy;
 use sui::test_scenario::begin;
 

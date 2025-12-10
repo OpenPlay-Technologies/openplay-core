@@ -43,9 +43,6 @@ const EInvalidAmount: u64 = 21; // Invalid amount (e.g., deposit with zero share
 // === Constants ===
 const MAX_GAMES: u64 = 500;
 
-/// Initial NAV when no shares exist (1 MIST = 1 share at start).
-const INITIAL_NAV: u64 = 1;
-
 // === Structs ===
 /// One-time witness type for the House module.
 public struct HOUSE has drop {}
@@ -146,7 +143,7 @@ public struct SharesPurchasedEvent has copy, drop {
     player: address, // Address of the player purchasing shares
     shares: u64, // Shares purchased in this transaction
     amount: u64, // Amount deposited (MIST)
-    nav_per_share: u64, // NAV per share at time of purchase
+    effective_house_balance: u64, // Effective house balance at time of purchase
     total_shares: u64, // Total shares in circulation after purchase
     epoch: u64, // Epoch when shares were purchased
 }
@@ -158,7 +155,7 @@ public struct SharesSoldEvent has copy, drop {
     player: address, // Address of the player selling shares
     shares: u64, // Shares sold in this transaction
     payout: u64, // Amount received (MIST)
-    nav_per_share: u64, // NAV per share at time of sale
+    effective_house_balance: u64, // Effective house balance at time of sale
     total_shares: u64, // Total shares in circulation after sale
     epoch: u64, // Epoch when shares were sold
 }
@@ -224,33 +221,45 @@ public fun house_balance(self: &House): u64 {
     self.vault.house_balance()
 }
 
-/// Calculates current NAV per share.
-/// NAV accounts for pending protocol, house, and collector fees (virtually reducing NAV during the epoch).
-/// Uses optimized calculation that sums all fee bps and calculates once.
+/// Returns the total number of shares in circulation.
 /// This is a read-only operation that doesn't require end-of-day processing.
-public fun nav_per_share(self: &House): u64 {
-    let total_shares = self.state.total_shares();
+public fun total_shares(self: &House): u64 {
+    self.state.total_shares()
+}
 
-    if (total_shares == 0) {
-        return INITIAL_NAV
-    };
-
-    // Vault value = house_balance (excludes collected fees)
+/// Returns the effective house balance (house_balance - pending_fees).
+/// This represents the actual value available to shareholders after accounting for pending fees.
+/// This is a read-only operation that doesn't require end-of-day processing.
+public fun effective_house_balance(self: &House): u64 {
     let vault_value = self.vault.house_balance();
-
-    // Calculate total pending fees (protocol + house + collector) in one efficient calculation
-    // Uses epoch-specific fees from state
     let total_pending_fees = self.state.calculate_total_pending_fees();
-
-    let effective_value = if (vault_value > total_pending_fees) {
+    
+    if (vault_value > total_pending_fees) {
         vault_value - total_pending_fees
     } else {
         0
-    };
+    }
+}
 
-    // NAV = effective_value / total_shares
-    // Shares are 1:1 with MIST, so no precision needed
-    effective_value / total_shares
+/// Calculates the current value of a participation's shares.
+/// Uses mul_floor for accurate calculation that handles rounding properly.
+/// This is a read-only operation that doesn't require end-of-day processing.
+/// Returns the value in MIST that the participation's shares are worth.
+public fun nav(self: &House, participation: &Participation): u64 {
+    self.assert_valid_participation(participation);
+    
+    let participation_shares = participation::shares(participation);
+    let total_shares = self.state.total_shares();
+    
+    if (total_shares == 0 || participation_shares == 0) {
+        return 0
+    };
+    
+    let effective_value = self.effective_house_balance();
+    
+    // Use mul_floor to preserve precision: (participation_shares * effective_value) / total_shares
+    // Round DOWN to favor protocol (user gets slightly less)
+    mul_floor(participation_shares, effective_value, total_shares)
 }
 
 /// Returns the House ID associated with an admin cap.
@@ -303,7 +312,6 @@ public fun buy_shares(
     let deposit_amount = deposit.value();
     assert!(deposit_amount > 0, EInvalidAmount);
 
-    let nav_per_share = self.nav_per_share();
     let current_epoch = ctx.epoch();
     let player = ctx.sender();
 
@@ -311,17 +319,11 @@ public fun buy_shares(
     // shares = deposit_amount / nav_per_share = (deposit_amount * total_shares) / effective_value
     // Round DOWN to favor protocol (user gets slightly fewer shares)
     let total_shares = self.state.total_shares();
+    let effective_value = self.effective_house_balance();
     let shares_to_mint = if (total_shares == 0) {
         // If no shares exist yet, use 1:1 ratio (NAV = 1)
         deposit_amount
     } else {
-        let vault_value = self.vault.house_balance();
-        let total_pending_fees = self.state.calculate_total_pending_fees();
-        let effective_value = if (vault_value > total_pending_fees) {
-            vault_value - total_pending_fees
-        } else {
-            0
-        };
         assert!(effective_value > 0, EInvalidAmount);
         // Use mul_floor to preserve precision: (deposit_amount * total_shares) / effective_value
         mul_floor(deposit_amount, total_shares, effective_value)
@@ -349,7 +351,7 @@ public fun buy_shares(
         player,
         shares: shares_to_mint,
         amount: deposit_amount,
-        nav_per_share: nav_per_share,
+        effective_house_balance: effective_value,
         total_shares: total_shares,
         epoch: current_epoch,
     });
@@ -377,7 +379,6 @@ public fun sell_shares(
     // Verify participation has enough shares
     assert!(participation::shares(participation) >= shares_to_sell, ENotEnoughShares);
 
-    let nav_per_share = self.nav_per_share();
     let current_epoch = ctx.epoch();
     let player = ctx.sender();
 
@@ -415,7 +416,7 @@ public fun sell_shares(
         player,
         shares: shares_to_sell,
         payout: payout,
-        nav_per_share: nav_per_share,
+        effective_house_balance: effective_value,
         total_shares: total_shares,
         epoch: current_epoch,
     });
@@ -436,6 +437,11 @@ public fun borrow_tx_cap(self: &House, game_id: &mut UID): HouseTransactionCap {
         game_id: game_id_inner,
         fee_collector_id,
     }
+}
+
+/// Refreshes the state of the house by processing the end of day.
+public fun refresh_state(self: &mut House, registry: &Registry, ctx: &mut TxContext) {
+    self.process_end_of_day(registry, ctx);
 }
 
 // === Admin Functions ===

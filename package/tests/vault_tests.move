@@ -6,7 +6,7 @@ use openplay_core::vault;
 use std::unit_test::destroy;
 use sui::coin::mint_for_testing;
 use sui::sui::SUI;
-use sui::test_scenario::{begin, next_epoch};
+use sui::test_scenario::begin;
 
 #[test]
 public fun deposit_withdraw_ok() {
@@ -305,7 +305,7 @@ public fun test_withdraw_collector_fees() {
 public fun test_withdraw_collector_fees_nonexistent() {
     let addr = @0xA;
     let fee_collector_id = object::id_from_address(@0xB);
-    let mut scenario = begin(addr);
+    let scenario = begin(addr);
     {
         let house_id = object::id_from_address(@0x0);
         let mut vault = vault::empty(house_id);
@@ -324,7 +324,7 @@ public fun test_withdraw_collector_fees_nonexistent() {
 public fun test_collected_collector_fees_nonexistent() {
     let addr = @0xA;
     let fee_collector_id = object::id_from_address(@0xB);
-    let mut scenario = begin(addr);
+    let scenario = begin(addr);
     {
         let house_id = object::id_from_address(@0x0);
         let vault = vault::empty(house_id);

@@ -124,7 +124,7 @@ public fun test_historic_volumes_epoch_not_found() {
     let mut scenario = begin(addr);
     {
         let game_id = object::new(scenario.ctx());
-        let mut stats = game_stats::new(&game_id, scenario.ctx());
+        let stats = game_stats::new(&game_id, scenario.ctx());
         
         // Try to get historic volumes for an epoch that doesn't exist
         let _volumes = stats.historic_volumes(999);

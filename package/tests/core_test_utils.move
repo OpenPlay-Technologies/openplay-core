@@ -3,7 +3,7 @@ module openplay_core::core_test_utils;
 
 use openplay_core::house::{Self, House, HouseAdminCap};
 use openplay_core::participation::Participation;
-use openplay_core::registry::{Self, Registry};
+use openplay_core::registry::Registry;
 use sui::coin::mint_for_testing;
 use sui::random::{Random, create_for_testing};
 use sui::sui::SUI;
@@ -44,7 +44,7 @@ public fun fund_house_for_playing(
 }
 
 public fun default_house(ctx: &mut TxContext): (House, HouseAdminCap) {
-    let (mut house, house_admin) = house::new_for_testing(
+    let (house, house_admin) = house::new_for_testing(
         false,
         100_000,
         2000, // 20% house fee (performance fee)

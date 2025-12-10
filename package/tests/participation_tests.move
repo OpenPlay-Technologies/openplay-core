@@ -3,7 +3,7 @@ module openplay_core::participation_tests;
 
 use openplay_core::core_test_utils::default_house;
 use openplay_core::participation;
-use std::unit_test::{assert_eq, destroy};
+use std::unit_test::destroy;
 use sui::test_scenario::begin;
 
 #[test]

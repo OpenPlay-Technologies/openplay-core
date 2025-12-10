@@ -3,7 +3,6 @@ module openplay_core::balance_manager_tests;
 
 use openplay_core::balance_manager;
 use std::unit_test::destroy;
-use std::vector;
 use sui::coin::{mint_for_testing, burn_for_testing};
 use sui::sui::SUI;
 use sui::test_scenario::begin;
@@ -389,12 +388,7 @@ public fun test_revoke_play_cap_not_in_list() {
         // Try to revoke play_cap2 from balance_manager1 - should fail
         balance_manager1.revoke_play_cap(&balance_manager_cap1, &play_cap2_id, scenario.ctx());
         
-        destroy(balance_manager1);
-        destroy(balance_manager_cap1);
-        destroy(balance_manager2);
-        destroy(balance_manager_cap2);
-        destroy(play_cap2);
-        scenario.end();
+        abort 0
     }
 }
 
@@ -446,7 +440,7 @@ public fun test_validate_proof_failure() {
     let mut scenario = begin(addr);
     {
         let (mut balance_manager1, balance_manager_cap1) = balance_manager::new(scenario.ctx());
-        let (mut balance_manager2, balance_manager_cap2) = balance_manager::new(scenario.ctx());
+        let (balance_manager2, balance_manager_cap2) = balance_manager::new(scenario.ctx());
         
         // Generate proof for balance_manager1
         let proof1 = balance_manager1.generate_proof_as_owner(&balance_manager_cap1, scenario.ctx());

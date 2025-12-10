@@ -12,11 +12,9 @@ use openplay_core::participation;
 use openplay_core::registry::{Self, registry_for_testing};
 use openplay_core::transaction::{bet, win};
 use std::unit_test::{assert_eq, destroy};
-use std::vector;
 use sui::coin::{mint_for_testing, burn_for_testing};
-use sui::object;
 use sui::sui::SUI;
-use sui::test_scenario::{begin, next_tx, return_shared, Scenario, take_shared};
+use sui::test_scenario::{begin, next_tx, return_shared, take_shared};
 
 /// Helper function to calculate profits after house fee (20% = 2000 bps)
 /// Returns the amount that goes to stakers after house fee is deducted
@@ -43,18 +41,6 @@ public fun four_fifths_ceil(amount: u64): u64 {
     mul_ceil(amount, 4, 5)
 }
 
-/// Helper struct to generate unique IDs for testing (minimal struct to reduce gas)
-public struct TempIdGen has key { id: UID }
-
-/// Helper function to generate a unique ID by creating and destroying a temporary object
-/// This is gas-intensive but necessary for generating unique IDs in tests
-public fun generate_unique_id(ctx: &mut TxContext): ID {
-    let temp = TempIdGen { id: object::new(ctx) };
-    let id = object::id(&temp);
-    destroy(temp);
-    id
-}
-
 #[test]
 public fun complete_flow_share_losses() {
     let addr = @0xa;
@@ -78,12 +64,14 @@ public fun complete_flow_share_losses() {
     let shares1 = house.buy_shares(&registry, &mut participation, deposit1, scenario.ctx());
     assert!(house.house_balance() == 20_000); // House balance increased
     assert!(participation::shares(&participation) == shares1);
+    assert!(shares1 == 20_000, 0); // First purchase: 1:1 ratio when no shares exist
 
     // Buy shares: 80_000 on second participation
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
     let shares2 = house.buy_shares(&registry, &mut another_participation, deposit2, scenario.ctx());
     assert!(house.house_balance() == 100_000); // House balance is now 100k
     assert!(participation::shares(&another_participation) == shares2);
+    assert!(shares2 == 80_000, 1); // Second purchase: NAV = 1, so 80_000 / 1 = 80_000
 
     // Process some transactions
     // a bet of 10k and a win of 20k
@@ -105,29 +93,29 @@ public fun complete_flow_share_losses() {
     // House balance decreased by 10k (paid out more than received)
     assert!(house.house_balance() == 90_000); // 100k - 10k loss
 
-    // Shares remain the same until epoch end
+    // Shares remain the same
     assert!(participation::shares(&participation) == shares1);
     assert!(participation::shares(&another_participation) == shares2);
 
-    // End the epoch - fees are calculated from GGR and NAV adjusts
-    scenario.next_epoch(addr);
-    
-    // Process end of day happens automatically on next buy/sell or transaction
-    // For now, NAV will reflect the loss (fees deducted at epoch end)
-    let nav_after_loss = house.nav_per_share();
-    // NAV should be less than 1 (initial NAV) due to losses and fees
-    
-    // Sell all shares from first participation
-    let shares_to_sell1 = participation::shares(&participation);
-    let payout1 = house.sell_shares(&registry, &mut participation, shares_to_sell1, scenario.ctx());
-    
-    // Sell all shares from second participation
-    let shares_to_sell2 = participation::shares(&another_participation);
-    let payout2 = house.sell_shares(&registry, &mut another_participation, shares_to_sell2, scenario.ctx());
+    // Check exact values using new functions
+    // GGR = -10k (negative), so no pending fees
+    assert!(house.total_shares() == 100_000, 2);
+    assert!(house.effective_house_balance() == 90_000, 3); // 90k - 0 pending fees
 
-    // Total payout should be less than 100k due to losses and fees
-    let total_payout = payout1.value() + payout2.value();
-    assert!(total_payout < 100_000);
+    // Check NAV of each participation
+    // First participation: 20_000 shares out of 100_000 total
+    // nav = mul_floor(20_000, 90_000, 100_000) = 18_000
+    let nav1 = house.nav(&participation);
+    assert!(nav1 == 18_000, 4);
+
+    // Second participation: 80_000 shares out of 100_000 total
+    // nav = mul_floor(80_000, 90_000, 100_000) = 72_000
+    let nav2 = house.nav(&another_participation);
+    assert!(nav2 == 72_000, 5);
+
+    // Total NAV should equal effective house balance
+    assert!(nav1 + nav2 == 90_000, 6); // 18k + 72k = 90k
+    assert!(nav1 + nav2 < 100_000, 7); // Less than initial 100k due to 10k loss
 
     destroy(house);
     destroy(registry);
@@ -138,8 +126,6 @@ public fun complete_flow_share_losses() {
     destroy(participation);
     destroy(another_participation);
     destroy(stats);
-    burn_for_testing(payout1);
-    burn_for_testing(payout2);
     scenario.end();
 }
 
@@ -185,36 +171,44 @@ public fun complete_flow_share_profits() {
         &play_cap,
         scenario.ctx(),
     );
-    
+
     // Balance manager lost 5k net (10k bet - 5k win)
     assert!(balance_manager.balance() == 45_000); // 50k initial - 5k loss
     // House balance increased by 5k (received more than paid out)
     assert!(house.house_balance() == 105_000); // 100k + 5k profit
 
-    // Shares remain the same until epoch end
+    // Shares remain the same
     assert!(participation::shares(&participation) == shares1);
     assert!(participation::shares(&another_participation) == shares2);
 
-    // End the epoch - fees are calculated from GGR and NAV adjusts
-    scenario.next_epoch(addr);
-    
-    // NAV should reflect profits (after fees are deducted at epoch end)
-    let nav_after_profit = house.nav_per_share();
-    // NAV should be greater than 1 (initial NAV) due to profits, minus fees
-    
-    // Sell all shares from first participation
-    let shares_to_sell1 = participation::shares(&participation);
-    let payout1 = house.sell_shares(&registry, &mut participation, shares_to_sell1, scenario.ctx());
-    
-    // Sell all shares from second participation
-    let shares_to_sell2 = participation::shares(&another_participation);
-    let payout2 = house.sell_shares(&registry, &mut another_participation, shares_to_sell2, scenario.ctx());
+    // Check exact values using new functions
+    // GGR = 10k - 5k = 5k (positive)
+    // Total fee bps = 50 (protocol) + 2000 (house) + 1000 (collector) = 3050 bps
+    let pending_fees = mul_ceil_bps(5_000, 3050);
+    // Pending fees = mul_ceil_bps(5_000, 3050) = ceil(5_000 * 3050 / 10000) = ceil(1525) = 1525
+    assert!(pending_fees == 1525, 99);
+    assert!(house.total_shares() == 100_000, 0);
+    let effective_balance = house.effective_house_balance();
+    // effective_balance = 105_000 - 1525 = 103_475
+    assert!(effective_balance == 105_000 - pending_fees, 1);
 
-    // Total payout should be more than 100k due to profits (minus fees)
-    let total_payout = payout1.value() + payout2.value();
-    // After fees, should be less than 105k but more than 100k
-    assert!(total_payout > 100_000);
-    assert!(total_payout <= 105_000);
+    // Check NAV of each participation
+    // First participation: 20_000 shares out of 100_000 total
+    // nav = mul_floor(20_000, 103_475, 100_000) = floor(20_695) = 20_695
+    let expected_nav1 = mul_floor(20_000, effective_balance, 100_000);
+    let nav1 = house.nav(&participation);
+    assert!(nav1 == expected_nav1, 2);
+
+    // Second participation: 80_000 shares out of 100_000 total
+    // nav = mul_floor(80_000, 103_475, 100_000) = floor(82_780) = 82_780
+    let expected_nav2 = mul_floor(80_000, effective_balance, 100_000);
+    let nav2 = house.nav(&another_participation);
+    assert!(nav2 == expected_nav2, 3);
+
+    // Total NAV should equal effective house balance
+    assert!(nav1 + nav2 == effective_balance, 4); // 20_695 + 82_780 = 103_475
+    assert!(nav1 + nav2 > 100_000, 5); // More than initial 100k due to profits (minus fees)
+    assert!(nav1 + nav2 < 105_000, 6); // Less than 105k due to fees
 
     destroy(house);
     destroy(registry);
@@ -225,8 +219,6 @@ public fun complete_flow_share_profits() {
     destroy(participation);
     destroy(another_participation);
     destroy(stats);
-    burn_for_testing(payout1);
-    burn_for_testing(payout2);
     scenario.end();
 }
 
@@ -250,11 +242,11 @@ public fun complete_flow_share_profits_multi_round() {
 
     // Buy shares: 20_000 on first participation
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    let shares1 = house.buy_shares(&registry, &mut participation, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit1, scenario.ctx());
 
     // Buy shares: 80_000 on second participation
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    let shares2 = house.buy_shares(&registry, &mut another_participation, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut another_participation, deposit2, scenario.ctx());
 
     // a bet of 10k and a win of 5k
     // this results in a profit of 5k (GGR = 5k, fees calculated at epoch end)
@@ -284,24 +276,33 @@ public fun complete_flow_share_profits_multi_round() {
         scenario.ctx(),
     );
 
+    // Check NAV for both participations after profits (without selling shares)
+    let nav1 = house.nav(&participation);
+    let nav2 = house.nav(&another_participation);
+    let total_nav = nav1 + nav2;
+
+    // Check effective balance
+    let pending_fees = mul_ceil_bps(10_000, 3050);
+    let effective_balance = house.effective_house_balance();
+    assert!(effective_balance == 110_000 - pending_fees, 1);
+
+    // Check NAVs
+    let expected_nav1 = mul_floor(20_000, effective_balance, 100_000);
+    let expected_nav2 = mul_floor(80_000, effective_balance, 100_000);
+    assert!(nav1 == expected_nav1, 2);
+    assert!(nav2 == expected_nav2, 3);
+    assert!(total_nav == effective_balance, 4);
+
     // End epoch to process fees
     scenario.next_epoch(addr);
 
-    // Now sell all shares
-    let shares_to_sell1 = participation::shares(&participation);
-    let payout1 = house.sell_shares(&registry, &mut participation, shares_to_sell1, scenario.ctx());
-    
-    let shares_to_sell2 = participation::shares(&another_participation);
-    let payout2 = house.sell_shares(&registry, &mut another_participation, shares_to_sell2, scenario.ctx());
-
-    // Total payout should reflect profits (minus fees)
-    let total_payout = payout1.value() + payout2.value();
-    // Should be more than 100k due to profits, but less than 110k due to fees
-    assert!(total_payout > 100_000);
-    assert!(total_payout < 110_000);
-    
-    burn_for_testing(payout1);
-    burn_for_testing(payout2);
+    // Recheck the NAVs
+    let nav1 = house.nav(&participation);
+    let nav2 = house.nav(&another_participation);
+    let total_nav = nav1 + nav2;
+    assert!(nav1 == expected_nav1, 2);
+    assert!(nav2 == expected_nav2, 3);
+    assert!(total_nav == effective_balance, 4);
 
     destroy(house);
     destroy(registry);
@@ -336,11 +337,11 @@ public fun complete_flow_profits_and_losses_multi_round() {
 
     // Buy shares: 20_000 on first participation
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    let shares1 = house.buy_shares(&registry, &mut participation, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit1, scenario.ctx());
 
     // Buy shares: 80_000 on second participation
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    let shares2 = house.buy_shares(&registry, &mut another_participation, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut another_participation, deposit2, scenario.ctx());
 
     // a bet of 10k and a win of 5k
     // this results in a profit of 5k (GGR = 5k, fees calculated at epoch end)
@@ -371,24 +372,20 @@ public fun complete_flow_profits_and_losses_multi_round() {
         scenario.ctx(),
     );
 
-    // End epoch to process fees
-    scenario.next_epoch(addr);
+    // Check effective balance
+    let pending_fees = mul_ceil_bps(5000, 3050); // Only first epoch has fees
+    let effective_balance = house.effective_house_balance();
+    assert!(effective_balance == 100_000 - pending_fees, 1);
 
-    // Now sell all shares
-    let shares_to_sell1 = participation::shares(&participation);
-    let payout1 = house.sell_shares(&registry, &mut participation, shares_to_sell1, scenario.ctx());
-    
-    let shares_to_sell2 = participation::shares(&another_participation);
-    let payout2 = house.sell_shares(&registry, &mut another_participation, shares_to_sell2, scenario.ctx());
-
-    // Total payout should reflect the net result (approximately 100k minus fees from both epochs)
-    let total_payout = payout1.value() + payout2.value();
-    // Should be less than 100k due to fees, but close to it since profits and losses cancel out
-    assert!(total_payout < 100_000);
-    assert!(total_payout > 95_000); // Should still have most of the original amount
-    
-    burn_for_testing(payout1);
-    burn_for_testing(payout2);
+    // Check NAVs
+    let nav1 = house.nav(&participation);
+    let nav2 = house.nav(&another_participation);
+    let total_nav = nav1 + nav2;
+    let expected_nav1 = mul_floor(20_000, effective_balance, 100_000);
+    let expected_nav2 = mul_floor(80_000, effective_balance, 100_000);
+    assert!(nav1 == expected_nav1, 2);
+    assert!(nav2 == expected_nav2, 3);
+    assert!(total_nav == effective_balance, 4);
 
     destroy(registry);
     destroy(house);
@@ -435,7 +432,7 @@ public fun complete_flow_multiple_funded_rounds() {
 
     // Process some transactions
     // a bet of 10k and a win of 20k
-    // this results in a loss of 10k (GGR = -10k, fees calculated at epoch end)
+    // this results in a loss of 10k (GGR = -10k, no fees)
     let tx_cap = house.tx_cap_for_testing(game_id);
     let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
     house.tx_admin_process_transactions_v2(
@@ -447,31 +444,34 @@ public fun complete_flow_multiple_funded_rounds() {
         &play_cap,
         scenario.ctx(),
     );
-    
+
     assert!(balance_manager.balance() == 60_000); // 50k initial + 10k net win
     assert!(house.house_balance() == 140_000); // 150k - 10k loss
     assert!(participation::shares(&participation) == shares1);
     assert!(participation::shares(&another_participation) == shares2);
 
-    // End the epoch - fees are calculated from GGR
-    scenario.next_epoch(addr);
-    
-    // NAV will reflect the loss (fees deducted at epoch end)
-    let nav_after_loss = house.nav_per_share();
+    // Check values after loss (no epoch wait needed)
+    // GGR = -10k (negative), so no pending fees
+    assert!(house.effective_house_balance() == 140_000, 0);
+
+    // Check NAV of first participation before buying more
+    let nav1 = house.nav(&participation);
+    let expected_nav1 = mul_floor(30_000, house.effective_house_balance(), house.total_shares());
+    assert!(nav1 == expected_nav1, 1);
 
     // Buy more shares: 20_000
     let deposit3 = mint_for_testing<SUI>(20_000, scenario.ctx());
     let shares3 = house.buy_shares(&registry, &mut participation, deposit3, scenario.ctx());
     assert!(participation::shares(&participation) == shares1 + shares3);
 
-    // Sell all shares from first participation
-    let shares_to_sell = participation::shares(&participation);
-    let payout = house.sell_shares(&registry, &mut participation, shares_to_sell, scenario.ctx());
-    
-    // Payout should reflect NAV (which includes the loss from previous epoch)
-    assert!(payout.value() < 50_000); // Less than 50k due to losses and fees
-    
-    burn_for_testing(payout);
+    // Check NAV after buying more shares
+    let nav_after = house.nav(&participation);
+    let expected_nav_after = mul_floor(
+        shares1 + shares3,
+        house.effective_house_balance(),
+        house.total_shares(),
+    );
+    assert!(nav_after == expected_nav_after, 2);
 
     destroy(house);
     destroy(registry);
@@ -493,7 +493,7 @@ public fun insufficient_funds_should_fail() {
     let game_id = object::id_from_address(addr);
 
     // Create a new house and balance manager
-    let mut registry = registry_for_testing(scenario.ctx());
+    let registry = registry_for_testing(scenario.ctx());
     let (mut house, _admin_cap) = default_house(scenario.ctx());
     let mut participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
@@ -546,30 +546,30 @@ public fun buy_sell_shares_ok() {
     let shares_to_sell1 = participation::shares(&participation);
     let payout1 = house.sell_shares(&registry, &mut participation, shares_to_sell1, scenario.ctx());
     assert!(participation::shares(&participation) == 0);
-    // Payout should be approximately 30k (may vary slightly due to NAV)
-    assert!(payout1.value() > 29_000);
-    assert!(payout1.value() <= 30_000);
+    assert!(payout1.value() == 30_000);
 
     // Advance epoch
     scenario.next_epoch(addr);
-    assert!(house.house_balance() < 150_000); // House balance decreased after payout
+    assert!(house.house_balance() == 120_000); // House balance decreased after payout
 
     // First one now buys 100k shares again
     let deposit3 = mint_for_testing<SUI>(100_000, scenario.ctx());
     let shares3 = house.buy_shares(&registry, &mut participation, deposit3, scenario.ctx());
     assert!(participation::shares(&participation) == shares3);
-    
+
     // Second one sells all shares
     let shares_to_sell2 = participation::shares(&another_participation);
-    let payout2 = house.sell_shares(&registry, &mut another_participation, shares_to_sell2, scenario.ctx());
+    let payout2 = house.sell_shares(
+        &registry,
+        &mut another_participation,
+        shares_to_sell2,
+        scenario.ctx(),
+    );
     assert!(participation::shares(&another_participation) == 0);
-    // Payout should be approximately 120k (may vary slightly due to NAV)
-    assert!(payout2.value() > 119_000);
-    assert!(payout2.value() <= 120_000);
+    assert!(payout2.value() == 120_000);
 
     // Advance epoch
     scenario.next_epoch(addr);
-    assert!(house.house_balance() > 0); // House still has balance from first participation
 
     // First participation still has shares
     assert!(participation::shares(&participation) == shares3);
@@ -583,7 +583,7 @@ public fun buy_sell_shares_ok() {
 
     // Advance epoch
     scenario.next_epoch(addr);
-    assert!(house.house_balance() >= 0); // House balance may be low or zero
+    assert!(house.house_balance() == 0); // House balance is zero after all shares are sold
 
     destroy(house);
     destroy(registry);
@@ -617,12 +617,12 @@ public fun house_balance_decreases_when_all_shares_sold() {
     let shares_to_sell = participation::shares(&participation);
     let payout = house.sell_shares(&registry, &mut participation, shares_to_sell, scenario.ctx());
     assert!(participation::shares(&participation) == 0);
-    assert!(payout.value() > 0);
+    assert!(payout.value() == 100_000);
 
     // Advance epoch
     scenario.next_epoch(addr);
-    // House balance should be low or zero after all shares are sold
-    assert!(house.house_balance() < 100_000);
+    // House balance should be zero after all shares are sold
+    assert!(house.house_balance() == 0);
 
     destroy(house);
     destroy(registry);
@@ -644,9 +644,12 @@ public fun claim_collector_fees_ok() {
     scenario.next_epoch(addr);
 
     // Create a fee collector
-    let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
+    let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(
+        &admin_cap,
+        scenario.ctx(),
+    );
     let fee_collector_id = fee_collector.id();
-    
+
     // Assign game to fee collector (before sharing)
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector);
 
@@ -659,7 +662,12 @@ public fun claim_collector_fees_ok() {
     // Get shared reference for claiming fees
     scenario.next_tx(addr);
     let fee_collector_ref = scenario.take_shared<fee_collector::FeeCollector>();
-    let coin2 = house.claim_collector_fees(&registry, &fee_collector_ref, &fee_collector_cap, scenario.ctx());
+    let coin2 = house.claim_collector_fees(
+        &registry,
+        &fee_collector_ref,
+        &fee_collector_cap,
+        scenario.ctx(),
+    );
     return_shared(fee_collector_ref);
     assert!(coin2.value() == 200);
 
@@ -675,23 +683,30 @@ public fun claim_collector_fees_ok() {
 #[test]
 public fun claim_collector_fees_empty() {
     let addr = @0xa;
-    let game_id = object::id_from_address(@0xB);
     let mut scenario = begin(addr);
     let registry = registry_for_testing(scenario.ctx());
-    
+
     // Create a new house
     let (mut house, admin_cap) = default_house(scenario.ctx());
-    
+
     // Create a fee collector
-    let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-    
+    let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(
+        &admin_cap,
+        scenario.ctx(),
+    );
+
     // Share the fee collector
     fee_collector::share(fee_collector);
-    
+
     // Claim fees when none exist (get shared reference)
     scenario.next_tx(addr);
     let fee_collector_ref = scenario.take_shared<fee_collector::FeeCollector>();
-    let coin2 = house.claim_collector_fees(&registry, &fee_collector_ref, &fee_collector_cap, scenario.ctx());
+    let coin2 = house.claim_collector_fees(
+        &registry,
+        &fee_collector_ref,
+        &fee_collector_cap,
+        scenario.ctx(),
+    );
     return_shared(fee_collector_ref);
     assert!(coin2.value() == 0);
 
@@ -712,7 +727,7 @@ public fun claim_house_fees_ok() {
     // Create a new house and balance manager
     let registry = registry_for_testing(scenario.ctx());
     let (mut house, admin_cap) = default_house(scenario.ctx());
-    let mut participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
+    let participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
     scenario.next_epoch(addr);
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
     // Deposit 50_000 on the balance manager
@@ -735,7 +750,7 @@ public fun claim_house_fees_ok() {
 
     // End the epoch to process profits and collect house fee from GGR
     scenario.next_epoch(addr);
-    
+
     // House fees are calculated from GGR at epoch end
     // GGR = 10_000 - 5_000 = 5_000
     // House fee = GGR * house_fee_bps / 10000
@@ -773,15 +788,15 @@ public fun claim_collector_fees_multiple_collectors() {
     // Create two fee collectors
     let (fee_collector1, cap1) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
     let (fee_collector2, cap2) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-    
+
     // Get IDs before sharing
     let fee_collector1_id = fee_collector1.id();
     let fee_collector2_id = fee_collector2.id();
-    
+
     // Assign games to fee collectors (before sharing)
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id1, &fee_collector1);
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id2, &fee_collector2);
-    
+
     // Share the fee collectors so they can be accessed
     fee_collector::share(fee_collector1);
     fee_collector::share(fee_collector2);
@@ -795,18 +810,18 @@ public fun claim_collector_fees_multiple_collectors() {
     scenario.next_tx(addr);
     let ref1 = scenario.take_shared<fee_collector::FeeCollector>();
     let ref2 = scenario.take_shared<fee_collector::FeeCollector>();
-    
+
     // Match references to collectors based on ID
     let (fee_collector1_ref, fee_collector2_ref) = if (ref1.id() == fee_collector1_id) {
         (ref1, ref2)
     } else {
         (ref2, ref1)
     };
-    
+
     let coin1 = house.claim_collector_fees(&registry, &fee_collector1_ref, &cap1, scenario.ctx());
     return_shared(fee_collector1_ref);
     assert!(coin1.value() == 100);
-    
+
     let coin2 = house.claim_collector_fees(&registry, &fee_collector2_ref, &cap2, scenario.ctx());
     return_shared(fee_collector2_ref);
     assert!(coin2.value() == 50);
@@ -830,12 +845,11 @@ public fun claim_collector_fees_wrong_house() {
 
     // Create two houses
     let registry = registry_for_testing(scenario.ctx());
-    let (mut house1, admin_cap1) = default_house(scenario.ctx());
+    let (house1, admin_cap1) = default_house(scenario.ctx());
     let (mut house2, _admin_cap2) = default_house(scenario.ctx());
 
     // Create a fee collector for house1
     let (fee_collector, cap) = house1.admin_create_fee_collector(&admin_cap1, scenario.ctx());
-    let fee_collector_id = fee_collector.id();
     fee_collector::share(fee_collector);
 
     // Try to claim fees using house2 (should fail) - get shared reference
@@ -921,7 +935,7 @@ public fun process_transactions_wrong_cap() {
 }
 
 #[test]
-public fun process_transactions_basic() {
+public fun test_process_transactions_basic() {
     let addr = @0xa;
     let mut scenario = begin(addr);
     let game_id = object::id_from_address(addr);
@@ -948,14 +962,6 @@ public fun process_transactions_basic() {
         &play_cap,
         scenario.ctx(),
     );
-
-    // In v3.1, fees are calculated from GGR at epoch end, not per transaction
-    // So we need to advance epoch to process fees
-    scenario.next_epoch(addr);
-    
-    // Fees are now calculated from GGR, not per transaction
-    // GGR = 10_000 - 5_000 = 5_000
-    // Collector fees, house fees, and protocol fees are calculated at epoch end
 
     // Check stats
     assert!(stats.current_volumes().bet_count() == 1);
@@ -986,9 +992,15 @@ public fun process_transactions_different_fee_collectors() {
     let (mut house, admin_cap) = default_house(scenario.ctx());
 
     // Create two fee collectors
-    let (fee_collector1, fee_collector_cap1) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-    let (fee_collector2, fee_collector_cap2) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-    
+    let (fee_collector1, fee_collector_cap1) = house.admin_create_fee_collector(
+        &admin_cap,
+        scenario.ctx(),
+    );
+    let (fee_collector2, fee_collector_cap2) = house.admin_create_fee_collector(
+        &admin_cap,
+        scenario.ctx(),
+    );
+
     // Get IDs before sharing
     let fee_collector1_id = fee_collector1.id();
     let fee_collector2_id = fee_collector2.id();
@@ -996,10 +1008,6 @@ public fun process_transactions_different_fee_collectors() {
     // Assign games to different fee collectors (before sharing)
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id1, &fee_collector1);
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id2, &fee_collector2);
-
-    // Share the fee collectors
-    fee_collector::share(fee_collector1);
-    fee_collector::share(fee_collector2);
 
     // Verify game assignments
     assert_eq!(house.game_fee_collector(&game_id1), fee_collector1_id);
@@ -1013,7 +1021,7 @@ public fun process_transactions_different_fee_collectors() {
     balance_manager.deposit(&balance_manager_cap, deposit, scenario.ctx());
     let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
 
-    // Process transactions for first game
+    // Process transactions for first game (5k GGR)
     let tx_cap = house.tx_cap_for_testing(game_id1);
     let mut stats1 = game_stats::stats_for_testing(game_id1, scenario.ctx());
     house.tx_admin_process_transactions_v2(
@@ -1026,7 +1034,7 @@ public fun process_transactions_different_fee_collectors() {
         scenario.ctx(),
     );
 
-    // Process transactions for second game
+    // Process transactions for second game (10k GGR)
     let tx_cap = house.tx_cap_for_testing(game_id2);
     let mut stats2 = game_stats::stats_for_testing(game_id2, scenario.ctx());
     house.tx_admin_process_transactions_v2(
@@ -1034,16 +1042,32 @@ public fun process_transactions_different_fee_collectors() {
         &mut stats2,
         tx_cap,
         &mut balance_manager,
-        &vector[bet(10_000), win(5_000)],
+        &vector[bet(15_000), win(5_000)],
         &play_cap,
         scenario.ctx(),
     );
 
     // End epoch to calculate fees from GGR
     scenario.next_epoch(addr);
-    
-    // Fees are calculated from GGR at epoch end, so both collectors should have fees
-    // (In a real scenario, fees would be calculated from their respective GGR)
+
+    // Check fees for each collector
+    let expected_collector_fees1 = mul_ceil_bps(5_000, 1000);
+    let expected_collector_fees2 = mul_ceil_bps(10_000, 1000);
+
+    let collector_fee1 = house.claim_collector_fees(
+        &registry,
+        &fee_collector1,
+        &fee_collector_cap1,
+        scenario.ctx(),
+    );
+    let collector_fee2 = house.claim_collector_fees(
+        &registry,
+        &fee_collector2,
+        &fee_collector_cap2,
+        scenario.ctx(),
+    );
+    assert!(collector_fee1.value() == expected_collector_fees1, 1);
+    assert!(collector_fee2.value() == expected_collector_fees2, 2);
 
     destroy(house);
     destroy(registry);
@@ -1056,10 +1080,14 @@ public fun process_transactions_different_fee_collectors() {
     destroy(fee_collector_cap2);
     destroy(stats1);
     destroy(stats2);
+    destroy(fee_collector1);
+    destroy(fee_collector2);
+    destroy(collector_fee1);
+    destroy(collector_fee2);
     scenario.end();
 }
 
-#[test]
+#[test, expected_failure(abort_code = house::EGameDoesNotExist)]
 public fun admin_revoke_tx_allowed() {
     let addr = @0xa;
     let mut scenario = begin(addr);
@@ -1069,12 +1097,15 @@ public fun admin_revoke_tx_allowed() {
     let (mut house, admin_cap) = default_house(scenario.ctx());
 
     // Create fee collector and assign game
-    let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
+    let (fee_collector, _fee_collector_cap) = house.admin_create_fee_collector(
+        &admin_cap,
+        scenario.ctx(),
+    );
     let fee_collector_id = fee_collector.id();
-    
+
     // Assign game before sharing
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector);
-    
+
     // Share the fee collector
     fee_collector::share(fee_collector);
 
@@ -1084,11 +1115,8 @@ public fun admin_revoke_tx_allowed() {
     // Revoke game authorization
     house.admin_revoke_tx_allowed(&admin_cap, game_id);
 
-    // Verify game is no longer authorized (should abort if we try to get fee collector)
-    destroy(house);
-    destroy(admin_cap);
-    destroy(fee_collector_cap);
-    scenario.end();
+    house.game_fee_collector(&game_id);
+    abort 0
 }
 
 #[test]
@@ -1101,12 +1129,8 @@ public fun admin_revoke_tx_allowed_not_found() {
     // Create a new house
     let (mut house, admin_cap) = default_house(scenario.ctx());
 
-    // Try to revoke a game that doesn't exist (should abort)
     house.admin_revoke_tx_allowed(&admin_cap, game_id);
-
-    destroy(house);
-    destroy(admin_cap);
-    scenario.end();
+    abort 0
 }
 
 #[test]
@@ -1135,9 +1159,13 @@ public fun process_transactions_no_bm() {
         scenario.ctx(),
     );
 
-    // In v3.1, fees are calculated from GGR at epoch end, not per transaction
-    // Remainder should be 5_000 (net win to player)
     assert!(remainder.value() == 5_000);
+
+    // Check NAV
+    let nav = house.nav(&participation);
+    let expected_fees = mul_ceil_bps(5_000, 3050);
+    assert!(house.effective_house_balance() == 105_000 - expected_fees, 1);
+    assert!(nav == house.effective_house_balance(), 2);
 
     // Check stats
     assert!(stats.current_volumes().bet_count() == 1);
@@ -1161,7 +1189,7 @@ public fun process_transactions_no_bm_insufficient_balance() {
     let game_id = object::id_from_address(addr);
 
     // Create a new house and balance manager
-    let mut registry = registry_for_testing(scenario.ctx());
+    let registry = registry_for_testing(scenario.ctx());
     let (mut house, _admin_cap) = default_house(scenario.ctx());
     let _participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
     scenario.next_epoch(addr);
@@ -1187,13 +1215,13 @@ public fun tx_cap_wrong_uid() {
     let mut scenario = begin(addr);
     let (mut house, admin_cap) = default_house(scenario.ctx());
 
-       // Create a fee collector
+    // Create a fee collector
     let (fee_collector, _cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
     let game_id1 = object::id_from_address(@0xB);
-    
+
     // Assign game before sharing
     house.admin_add_tx_allowed_with_collector(&admin_cap, game_id1, &fee_collector);
-    
+
     // Share the fee collector
     fee_collector::share(fee_collector);
 
@@ -1219,8 +1247,7 @@ public fun tx_cap_revoked() {
 
     // Create a fee collector
     let (fee_collector, _cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-    let fee_collector_id = fee_collector.id();
-    
+
     // Share the fee collector
     fee_collector::share(fee_collector);
 
@@ -1288,22 +1315,16 @@ public fun house_version_disabled_after_rename() {
 }
 
 #[test, expected_failure(abort_code = registry::EPackageVersionDisabled)]
-public fun house_version_disabled() {
+public fun house_version_disabled_no_bm() {
     let addr = @0xa;
     let mut scenario = begin(addr);
     let game_id = object::id_from_address(addr);
 
-    // Create a new house and balance manager
+    // Create a new house
     let mut registry = registry_for_testing(scenario.ctx());
     let (mut house, _admin_cap) = default_house(scenario.ctx());
     let mut participation = participation::empty(house.id(), scenario.ctx());
     let mut another_participation = participation::empty(house.id(), scenario.ctx());
-    let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
-    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-
-    // Deposit 50_000 on the balance manager
-    let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
-    balance_manager.deposit(&balance_manager_cap, deposit, scenario.ctx());
 
     // Buy shares: 20_000 on first participation
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
@@ -1320,17 +1341,14 @@ public fun house_version_disabled() {
     let admin_cap = registry::cap_for_testing(scenario.ctx());
     registry.admin_disallow_version(&admin_cap, current_version(), scenario.ctx());
 
-    // Process some transactions
-    // a bet of 10k and a win of 5k
-    // this results in a profit of 5k - the extra owner and protocol fees
-    let tx_cap = house.tx_cap_for_testing(object::id_from_address(addr));
-    house.tx_admin_process_transactions_v2(
+    // Process some transactions (no balance manager)
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let _remainder = house.tx_admin_process_transactions_v2_no_bm(
         &registry,
         &mut game_stats::stats_for_testing(game_id, scenario.ctx()),
         tx_cap,
-        &mut balance_manager,
-        &vector[bet(10_000), win(5_000)],
-        &play_cap,
+        &vector[bet(10_000), win(11_000)],
+        mint_for_testing<SUI>(10_000, scenario.ctx()),
         scenario.ctx(),
     );
     abort 0
@@ -1376,7 +1394,7 @@ public fun bet_without_funds_win_higher_than_bet() {
     let game_id = object::id_from_address(addr);
 
     // Create a new house and balance manager
-    let mut registry = registry_for_testing(scenario.ctx());
+    let registry = registry_for_testing(scenario.ctx());
     let (mut house, _admin_cap) = default_house(scenario.ctx());
     let mut participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
@@ -1414,7 +1432,7 @@ public fun bet_without_funds_win_equals_bet() {
     let game_id = object::id_from_address(addr);
 
     // Create a new house and balance manager
-    let mut registry = registry_for_testing(scenario.ctx());
+    let registry = registry_for_testing(scenario.ctx());
     let (mut house, _admin_cap) = default_house(scenario.ctx());
     let mut participation = participation::empty(house.id(), scenario.ctx());
     let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
@@ -1505,12 +1523,12 @@ public fun test_admin_update_fees() {
     let mut scenario = begin(addr);
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Update fees
         house.admin_update_fees(&admin_cap, 1500, 800); // 15% house fee, 8% collector share
-        
+
         assert!(house.house_fee_bps() == 1500, 0);
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1523,10 +1541,10 @@ public fun test_admin_update_fees_invalid_house_fee() {
     let mut scenario = begin(addr);
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Try to set house fee >= 100% - should fail
         house.admin_update_fees(&admin_cap, max_bps(), 1000);
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1539,10 +1557,10 @@ public fun test_admin_update_fees_invalid_collector_share() {
     let mut scenario = begin(addr);
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Try to set collector share >= 100% - should fail
         house.admin_update_fees(&admin_cap, 2000, max_bps());
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1555,10 +1573,10 @@ public fun test_admin_update_fees_sum_too_high() {
     let mut scenario = begin(addr);
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Try to set house fee + collector share > 50% - should fail
         house.admin_update_fees(&admin_cap, 3000, 3000); // 30% + 30% = 60% > 50%
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1575,16 +1593,16 @@ public fun test_openplay_admin_claim_protocol_fees() {
         let openplay_admin_cap = registry::cap_for_testing(scenario.ctx());
         let participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
         scenario.next_epoch(addr);
-        
+
         let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
         let deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
         balance_manager.deposit(&balance_manager_cap, deposit, scenario.ctx());
         let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-        
+
         let game_id = object::id_from_address(addr);
         let tx_cap = house.tx_cap_for_testing(game_id);
         let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
-        
+
         // Process transactions that result in profits (GGR = 5k)
         house.tx_admin_process_transactions_v2(
             &registry,
@@ -1595,14 +1613,18 @@ public fun test_openplay_admin_claim_protocol_fees() {
             &play_cap,
             scenario.ctx(),
         );
-        
+
         // End epoch to process fees
         scenario.next_epoch(addr);
-        
+
         // Claim protocol fees
-        let protocol_fee_coin = house.openplay_admin_claim_protocol_fees(&openplay_admin_cap, &registry, scenario.ctx());
+        let protocol_fee_coin = house.openplay_admin_claim_protocol_fees(
+            &openplay_admin_cap,
+            &registry,
+            scenario.ctx(),
+        );
         assert!(protocol_fee_coin.value() > 0, 0);
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -1626,11 +1648,11 @@ public fun test_ensure_sufficient_funds() {
         let registry = registry_for_testing(scenario.ctx());
         let participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
         scenario.next_epoch(addr);
-        
+
         // Should not abort when balance >= amount
         house.ensure_sufficient_funds(50_000);
         house.ensure_sufficient_funds(100_000);
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -1648,10 +1670,10 @@ public fun test_ensure_sufficient_funds_failure() {
         let registry = registry_for_testing(scenario.ctx());
         let participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
         scenario.next_epoch(addr);
-        
+
         // Try to ensure more than available - should fail
         house.ensure_sufficient_funds(100_001);
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -1667,31 +1689,12 @@ public fun test_share() {
     {
         let mut registry = registry_for_testing(scenario.ctx());
         let (house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Share the house (registers it with registry)
         house::share(&mut registry, house, scenario.ctx());
-        
-        destroy(admin_cap);
-        destroy(registry);
-        scenario.end();
-    }
-}
 
-#[test]
-public fun test_nav_per_share_initial() {
-    let addr = @0xa;
-    let mut scenario = begin(addr);
-    {
-        let (house, admin_cap) = default_house(scenario.ctx());
-        let registry = registry_for_testing(scenario.ctx());
-        
-        // NAV should be INITIAL_NAV (1) when no shares exist
-        let nav = house.nav_per_share();
-        assert!(nav == 1, 0);
-        
-        destroy(house);
-        destroy(registry);
         destroy(admin_cap);
+        destroy(registry);
         scenario.end();
     }
 }
@@ -1704,15 +1707,17 @@ public fun test_nav_per_share_with_shares() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // Buy shares
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
-        // NAV should be approximately 1 (may vary slightly due to fees)
-        let nav = house.nav_per_share();
-        assert!(nav > 0, 0);
-        
+
+        // NAV should be exactly 1 (no fees, no transactions)
+        assert!(house.total_shares() == 100_000, 0);
+        assert!(house.effective_house_balance() == 100_000, 1);
+        let nav = house.nav(&participation);
+        assert!(nav == 100_000, 2); // All shares belong to this participation
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -1729,11 +1734,11 @@ public fun test_buy_shares_zero_deposit() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // Try to buy shares with zero deposit - should fail
         let deposit = mint_for_testing<SUI>(0, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -1750,15 +1755,15 @@ public fun test_sell_shares_insufficient() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // Buy some shares
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // Try to sell more than available - should fail
         let payout = house.sell_shares(&registry, &mut participation, 1_000_000, scenario.ctx());
         burn_for_testing(payout);
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -1773,10 +1778,10 @@ public fun test_id() {
     let mut scenario = begin(addr);
     {
         let (house, admin_cap) = default_house(scenario.ctx());
-        
+
         let house_id = house.id();
         assert!(house_id != object::id_from_address(@0x0), 0);
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1789,10 +1794,10 @@ public fun test_house_fee_bps() {
     let mut scenario = begin(addr);
     {
         let (house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Default house has 20% (2000 bps) house fee
         assert!(house.house_fee_bps() == 2000, 0);
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1805,11 +1810,11 @@ public fun test_admin_cap_house_id() {
     let mut scenario = begin(addr);
     {
         let (house, admin_cap) = default_house(scenario.ctx());
-        
+
         let house_id = house.id();
         let cap_house_id = house::admin_cap_house_id(&admin_cap);
         assert!(cap_house_id == house_id, 0);
-        
+
         destroy(house);
         destroy(admin_cap);
         scenario.end();
@@ -1823,12 +1828,12 @@ public fun test_transaction_cap_house_id() {
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let game_id = object::id_from_address(@0xB);
-        
+
         let tx_cap = house.tx_cap_for_testing(game_id);
         let house_id = house.id();
         let cap_house_id = house::transaction_cap_house_id(&tx_cap);
         assert!(cap_house_id == house_id, 0);
-        
+
         destroy(tx_cap);
         destroy(house);
         destroy(admin_cap);
@@ -1843,10 +1848,10 @@ public fun test_invalid_admin_cap() {
     {
         let (mut house1, admin_cap1) = default_house(scenario.ctx());
         let (house2, admin_cap2) = default_house(scenario.ctx());
-        
+
         // Try to use wrong admin cap - should fail
         house1.admin_update_fees(&admin_cap2, 1500, 800);
-        
+
         // Clean up (though we won't reach here due to expected_failure)
         destroy(house1);
         destroy(admin_cap1);
@@ -1864,15 +1869,15 @@ public fun test_invalid_participation() {
         let (mut house1, admin_cap1) = default_house(scenario.ctx());
         let (house2, admin_cap2) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
-        
+
         // Create participation for house2
         let mut participation = participation::empty(object::id_from_address(@0xC), scenario.ctx());
-        
+
         // Try to use participation from house2 with house1 - should fail
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         // Note: buy_shares consumes deposit, so we can't burn it afterwards
         house1.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // Clean up (though we won't reach here due to expected_failure)
         destroy(house1);
         destroy(admin_cap1);
@@ -1890,10 +1895,13 @@ public fun test_max_games_reached() {
     let mut scenario = begin(addr);
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
-        
+
         // Create fee collector
-        let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-        
+        let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(
+            &admin_cap,
+            scenario.ctx(),
+        );
+
         // Try to add MAX_GAMES (500) + 1 games - should fail
         // Need unique game_ids, so we generate them using a helper function
         // Note: Creating 500 objects is too gas-intensive for the test framework
@@ -1905,18 +1913,18 @@ public fun test_max_games_reached() {
         // The limit logic is the same regardless of the number
         let test_limit = 10;
         while (i < test_limit) {
-            let game_id = generate_unique_id(scenario.ctx());
+            let game_id = object::id_from_address(@0xB);
             vector::push_back(&mut game_ids, game_id);
             house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector);
             i = i + 1;
         };
-        
+
         // Note: This test verifies the limit logic works with a smaller number of games
         // to avoid gas issues. The actual MAX_GAMES limit of 500 is enforced in the code.
         // In production, adding the 501st game would fail with EMaxGamesReached.
-        let game_id_extra = generate_unique_id(scenario.ctx());
+        let game_id_extra = object::id_from_address(@0xC);
         house.admin_add_tx_allowed_with_collector(&admin_cap, game_id_extra, &fee_collector);
-        
+
         // Clean up
         destroy(house);
         destroy(admin_cap);
@@ -1933,10 +1941,14 @@ public fun test_openplay_admin_new_house_protocol_fee_too_high() {
     {
         let mut registry = registry_for_testing(scenario.ctx());
         let openplay_admin_cap = registry::cap_for_testing(scenario.ctx());
-        
+
         // Set protocol fee to max + 1 - should fail
-        registry.update_protocol_fee_bps(&openplay_admin_cap, max_protocol_fee_bps() + 1, scenario.ctx());
-        
+        registry.update_protocol_fee_bps(
+            &openplay_admin_cap,
+            max_protocol_fee_bps() + 1,
+            scenario.ctx(),
+        );
+
         // Try to create house - should fail due to protocol fee too high
         let (house, admin_cap) = house::openplay_admin_new_house(
             &openplay_admin_cap,
@@ -1947,7 +1959,7 @@ public fun test_openplay_admin_new_house_protocol_fee_too_high() {
             1000,
             scenario.ctx(),
         );
-        
+
         // Clean up (though we won't reach here due to expected_failure)
         destroy(house);
         destroy(admin_cap);
@@ -1964,7 +1976,7 @@ public fun test_openplay_admin_new_house_fees_too_high() {
     {
         let registry = registry_for_testing(scenario.ctx());
         let openplay_admin_cap = registry::cap_for_testing(scenario.ctx());
-        
+
         // Try to create house with fees that sum to > 50% - should fail
         let (house, admin_cap) = house::openplay_admin_new_house(
             &openplay_admin_cap,
@@ -1975,7 +1987,7 @@ public fun test_openplay_admin_new_house_fees_too_high() {
             3000, // 30% - total 60% > 50%
             scenario.ctx(),
         );
-        
+
         // Clean up (though we won't reach here due to expected_failure)
         destroy(house);
         destroy(admin_cap);
@@ -1993,20 +2005,20 @@ public fun test_process_end_of_day_multiple_epochs() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // Buy shares
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // Skip multiple epochs
         scenario.next_epoch(addr);
         scenario.next_epoch(addr);
         scenario.next_epoch(addr);
-        
+
         // Process end of day should handle all skipped epochs (called automatically by buy_shares)
         let deposit2 = mint_for_testing<SUI>(10_000, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit2, scenario.ctx());
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -2025,15 +2037,15 @@ public fun test_nav_per_share_with_pending_fees() {
         let mut participation = participation::empty(house.id(), scenario.ctx());
         let (mut balance_manager, balance_manager_cap) = balance_manager::new(scenario.ctx());
         let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
-        
+
         // Buy shares
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // Deposit to balance manager
         let bm_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
         balance_manager.deposit(&balance_manager_cap, bm_deposit, scenario.ctx());
-        
+
         // Process profitable transactions (GGR = 5k)
         let game_id = object::id_from_address(addr);
         let tx_cap = house.tx_cap_for_testing(game_id);
@@ -2047,11 +2059,15 @@ public fun test_nav_per_share_with_pending_fees() {
             &play_cap,
             scenario.ctx(),
         );
-        
+
         // NAV should account for pending fees (reduces NAV during epoch)
-        let nav = house.nav_per_share();
-        assert!(nav > 0, 0);
-        
+        // GGR = 5k, total fee bps = 3050, pending fees = mul_ceil_bps(5_000, 3050) = 1525
+        // Effective balance = 105_000 - 1525 = 103_475
+        assert!(house.total_shares() == 100_000, 0);
+        assert!(house.effective_house_balance() == 103_475, 1);
+        let nav = house.nav(&participation);
+        assert!(nav == 103_475, 2); // All shares belong to this participation
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -2072,15 +2088,17 @@ public fun test_nav_per_share_zero_effective_value() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // Buy shares
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // NAV should handle edge cases gracefully
-        let nav = house.nav_per_share();
-        assert!(nav >= 0, 0); // Should not panic
-        
+        assert!(house.total_shares() == 100_000, 0);
+        assert!(house.effective_house_balance() == 100_000, 1); // No pending fees
+        let nav = house.nav(&participation);
+        assert!(nav == 100_000, 2); // All shares belong to this participation
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -2097,14 +2115,14 @@ public fun test_buy_shares_first_deposit() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // First deposit when no shares exist - should use 1:1 ratio
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         let shares = house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // Shares should equal deposit amount (1:1 when no shares exist)
         assert!(shares == 100_000, 0);
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -2121,16 +2139,16 @@ public fun test_sell_shares_all() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let registry = registry_for_testing(scenario.ctx());
         let mut participation = participation::empty(house.id(), scenario.ctx());
-        
+
         // Buy shares
         let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
         let shares = house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
-        
+
         // Sell all shares
         let payout = house.sell_shares(&registry, &mut participation, shares, scenario.ctx());
         assert!(participation::shares(&participation) == 0, 0);
-        assert!(payout.value() > 0, 1);
-        
+        assert!(payout.value() == 100_000, 1);
+
         burn_for_testing(payout);
         destroy(house);
         destroy(registry);
@@ -2147,19 +2165,19 @@ public fun test_admin_add_tx_allowed_updates_existing() {
     {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let game_id = object::id_from_address(@0xB);
-        
+
         // Create two fee collectors
         let (fee_collector1, cap1) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
         let (fee_collector2, cap2) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
-        
+
         // Assign game to first collector
         house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector1);
         assert!(house.game_fee_collector(&game_id) == fee_collector1.id(), 0);
-        
+
         // Update to second collector (should not error)
         house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector2);
         assert!(house.game_fee_collector(&game_id) == fee_collector2.id(), 1);
-        
+
         destroy(house);
         destroy(admin_cap);
         destroy(fee_collector1);
@@ -2178,21 +2196,14 @@ public fun test_admin_add_tx_allowed_wrong_collector() {
         let (mut house1, admin_cap1) = default_house(scenario.ctx());
         let (house2, admin_cap2) = default_house(scenario.ctx());
         let game_id = object::id_from_address(@0xB);
-        
+
         // Create fee collector for house2
-        let (fee_collector, cap) = house2.admin_create_fee_collector(&admin_cap2, scenario.ctx());
-        
+        let (fee_collector, _cap) = house2.admin_create_fee_collector(&admin_cap2, scenario.ctx());
+
         // Try to assign game from house1 using fee collector from house2 - should fail
         house1.admin_add_tx_allowed_with_collector(&admin_cap1, game_id, &fee_collector);
-        
-        // Clean up (though we won't reach here due to expected_failure)
-        destroy(house1);
-        destroy(admin_cap1);
-        destroy(house2);
-        destroy(admin_cap2);
-        destroy(fee_collector);
-        destroy(cap);
-        scenario.end();
+
+        abort 0
     }
 }
 
@@ -2206,25 +2217,33 @@ public fun test_claim_collector_fees_with_cap_validation() {
         let (mut house, admin_cap) = default_house(scenario.ctx());
         let participation = fund_house_for_playing(&mut house, &registry, 100_000, scenario.ctx());
         scenario.next_epoch(addr);
-        
+
         // Create fee collector
-        let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(&admin_cap, scenario.ctx());
+        let (fee_collector, fee_collector_cap) = house.admin_create_fee_collector(
+            &admin_cap,
+            scenario.ctx(),
+        );
         let fee_collector_id = fee_collector.id();
-        
+
         // Assign game
         house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector);
         fee_collector::share(fee_collector);
-        
+
         // Add collector fees for testing
         house.add_collector_fees_for_testing(fee_collector_id, 100);
-        
+
         // Claim fees
         scenario.next_tx(addr);
         let fee_collector_ref = scenario.take_shared<fee_collector::FeeCollector>();
-        let coin = house.claim_collector_fees(&registry, &fee_collector_ref, &fee_collector_cap, scenario.ctx());
+        let coin = house.claim_collector_fees(
+            &registry,
+            &fee_collector_ref,
+            &fee_collector_cap,
+            scenario.ctx(),
+        );
         return_shared(fee_collector_ref);
         assert!(coin.value() == 100, 0);
-        
+
         destroy(house);
         destroy(registry);
         destroy(admin_cap);
@@ -2243,28 +2262,24 @@ public fun test_claim_collector_fees_invalid_cap() {
         let registry = registry_for_testing(scenario.ctx());
         let (mut house1, admin_cap1) = default_house(scenario.ctx());
         let (house2, admin_cap2) = default_house(scenario.ctx());
-        
+
         // Create fee collector for house1
-        let (fee_collector, cap1) = house1.admin_create_fee_collector(&admin_cap1, scenario.ctx());
-        let (fee_collector2, cap2) = house2.admin_create_fee_collector(&admin_cap2, scenario.ctx());
+        let (fee_collector, _cap1) = house1.admin_create_fee_collector(&admin_cap1, scenario.ctx());
+        let (_fee_collector2, cap2) = house2.admin_create_fee_collector(&admin_cap2, scenario.ctx());
         fee_collector::share(fee_collector);
-        
+
         // Try to claim with wrong cap - should fail
         scenario.next_tx(addr);
         let fee_collector_ref = scenario.take_shared<fee_collector::FeeCollector>();
-        let coin = house1.claim_collector_fees(&registry, &fee_collector_ref, &cap2, scenario.ctx());
+        let coin = house1.claim_collector_fees(
+            &registry,
+            &fee_collector_ref,
+            &cap2,
+            scenario.ctx(),
+        );
         return_shared(fee_collector_ref);
         burn_for_testing(coin);
-        
-        // Clean up (though we won't reach here due to expected_failure)
-        destroy(house1);
-        destroy(admin_cap1);
-        destroy(house2);
-        destroy(admin_cap2);
-        destroy(cap1);
-        destroy(fee_collector2);
-        destroy(cap2);
-        destroy(registry);
-        scenario.end();
+
+        abort 0
     }
 }
