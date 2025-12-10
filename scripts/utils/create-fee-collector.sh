@@ -101,19 +101,44 @@ print_status "Recipient: $RECIPIENT_ADDRESS"
 
 # Create the fee collector
 print_status "Creating fee collector instance..."
+print_status "Core Package ID: $CORE_PACKAGE_ID"
+
+# Temporarily disable exit on error to capture the output
+set +e
 FEE_COLLECTOR_OUTPUT=$(sui client ptb \
     --move-call $CORE_PACKAGE_ID::house::admin_create_fee_collector @$HOUSE_ID @$HOUSE_ADMIN_CAP_ID \
     --assign createFeeCollectorOutput \
     --move-call $CORE_PACKAGE_ID::fee_collector::share createFeeCollectorOutput.0 \
     --transfer-objects [createFeeCollectorOutput.1] @$RECIPIENT_ADDRESS \
-    --json)
+    --json 2>&1)
+PTB_EXIT_CODE=$?
+set -e
+
+# Check if the command itself failed
+if [ $PTB_EXIT_CODE -ne 0 ]; then
+    print_error "sui client ptb command failed with exit code: $PTB_EXIT_CODE"
+    print_error "Output:"
+    echo "$FEE_COLLECTOR_OUTPUT"
+    exit 1
+fi
+
+# Check if output is valid JSON
+if ! echo "$FEE_COLLECTOR_OUTPUT" | jq empty 2>/dev/null; then
+    print_error "Invalid JSON response from sui client ptb"
+    print_error "Raw output:"
+    echo "$FEE_COLLECTOR_OUTPUT"
+    exit 1
+fi
 
 # Check if fee collector creation was successful
 if echo "$FEE_COLLECTOR_OUTPUT" | jq -e '.effects.status.status == "success"' > /dev/null; then
     print_success "Fee collector created successfully!"
 else
     print_error "Fee collector creation failed!"
+    print_error "Status:"
     echo "$FEE_COLLECTOR_OUTPUT" | jq '.effects.status'
+    print_error "Full response:"
+    echo "$FEE_COLLECTOR_OUTPUT" | jq '.'
     exit 1
 fi
 
