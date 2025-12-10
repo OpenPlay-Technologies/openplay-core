@@ -366,8 +366,8 @@ fun ensure_sufficient_funds_passes() {
 
     scenario.next_epoch(addr);
 
-    house.ensure_sufficient_funds(50_000);
-    house.ensure_sufficient_funds(100_000);
+    house.ensure_sufficient_funds(&registry, 50_000, scenario.ctx());
+    house.ensure_sufficient_funds(&registry, 100_000, scenario.ctx());
 
     destroy(house);
     destroy(registry);
@@ -387,7 +387,7 @@ fun ensure_sufficient_funds_fails() {
 
     scenario.next_epoch(addr);
 
-    house.ensure_sufficient_funds(100_001);
+    house.ensure_sufficient_funds(&registry, 100_001, scenario.ctx());
     abort 0
 }
 

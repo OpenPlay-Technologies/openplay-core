@@ -59,6 +59,8 @@ All notable changes to this project will be documented in this file.
   - `FeeCollectorCreatedEvent` - emitted when a fee collector is created
 
 #### House (`house.move`)
+- **Modified Functions:**
+  - `ensure_sufficient_funds(&mut House, &Registry, amount: u64, ctx: &mut TxContext)` - now takes `registry` and `ctx` parameters and calls `process_end_of_day()` before checking balance to ensure state is up-to-date
 - **New Struct Fields:**
   - `fee_collector_share_bps: u64` - fee collector share of GGR (in basis points)
   - `game_fee_collectors: VecMap<ID, ID>` - maps game_id to fee_collector_id (replaces `tx_allow_listed` and `games_fee_bps`)

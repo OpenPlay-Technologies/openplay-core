@@ -281,8 +281,10 @@ public fun share(registry: &mut Registry, house: House, ctx: &TxContext) {
 
 /// Ensures that the vault can cover `max_payout` with the house balance.
 /// In the share-based model, this checks the single house balance.
-public fun ensure_sufficient_funds(self: &mut House, amount: u64) {
+/// Processes end of day first to ensure state is up-to-date.
+public fun ensure_sufficient_funds(self: &mut House, registry: &Registry, amount: u64, ctx: &mut TxContext) {
     // Make sure the vault and participation are up to date (end of day is processed for previous days)
+    self.process_end_of_day(registry, ctx);
     assert!(self.vault.house_balance() >= amount, EInsufficientFunds)
 }
 
