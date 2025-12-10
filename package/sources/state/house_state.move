@@ -155,6 +155,21 @@ public fun total_shares(self: &State): u64 {
     self.total_shares
 }
 
+/// Returns the current epoch's protocol fee bps.
+public fun current_epoch_protocol_fee_bps(self: &State): u64 {
+    self.current_epoch_protocol_fee_bps
+}
+
+/// Returns the current epoch's house fee bps.
+public fun current_epoch_house_fee_bps(self: &State): u64 {
+    self.current_epoch_house_fee_bps
+}
+
+/// Returns the current epoch's fee collector share bps.
+public fun current_epoch_fee_collector_share_bps(self: &State): u64 {
+    self.current_epoch_fee_collector_share_bps
+}
+
 /// Returns the current epoch's collector GGR for a specific collector.
 /// Returns a CollectorGGR with zero values if collector is not found or has no activity.
 public fun current_collector_ggr(self: &State, collector_id: ID): CollectorGGR {

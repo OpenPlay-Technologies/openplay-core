@@ -18,7 +18,13 @@ public fun transactions_process_ok() {
 
     // Initialize state and balance manager
     let house_id = object::id_from_address(@0x0);
-    let mut state = house_state::new(house_id, protocol_fee_bps, house_fee_bps, fee_collector_share_bps, scenario.ctx());
+    let mut state = house_state::new(
+        house_id,
+        protocol_fee_bps,
+        house_fee_bps,
+        fee_collector_share_bps,
+        scenario.ctx(),
+    );
     let (bm, bm_cap) = balance_manager::new(scenario.ctx());
     let fee_collector_id = object::id_from_address(@0xB);
 
@@ -38,7 +44,7 @@ public fun transactions_process_ok() {
     assert!(state.current_volumes().total_win_amount() == 5);
     assert!(state.all_time_bet_amount() == 10);
     assert!(state.all_time_win_amount() == 5);
-    
+
     // Check collector GGR tracking
     let collector_ggr = state.current_collector_ggr(fee_collector_id);
     assert!(house_state::bet_amount(&collector_ggr) == 10);
@@ -105,19 +111,25 @@ public fun process_end_of_day_ok() {
     let protocol_fee_bps = 50;
     let house_fee_bps = 2000;
     let fee_collector_share_bps = 1000;
-    let mut state = house_state::new(house_id, protocol_fee_bps, house_fee_bps, fee_collector_share_bps, scenario.ctx());
-    
+    let mut state = house_state::new(
+        house_id,
+        protocol_fee_bps,
+        house_fee_bps,
+        fee_collector_share_bps,
+        scenario.ctx(),
+    );
+
     let fee_collector_id = object::id_from_address(@0xB);
     let (bm, bm_cap) = balance_manager::new(scenario.ctx());
 
     // Process some transactions to generate GGR
     let txs = vector[bet(10_000), win(5_000)];
     state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-    
+
     // GGR = 10_000 - 5_000 = 5_000
     // Advance epoch
     scenario.next_epoch(addr);
-    
+
     // Process end of day - fees calculated from GGR
     let (collector_fees, house_fee, protocol_fee) = state.process_end_of_day(
         scenario.ctx().epoch() - 1,
@@ -126,12 +138,12 @@ public fun process_end_of_day_ok() {
         protocol_fee_bps,
         scenario.ctx(),
     );
-    
+
     // Check fees are calculated from GGR
     let expected_collector_fee = mul_ceil_bps(5_000, fee_collector_share_bps);
     let expected_house_fee = mul_ceil_bps(5_000, house_fee_bps);
     let expected_protocol_fee = mul_ceil_bps(5_000, protocol_fee_bps);
-    
+
     assert!(house_fee == expected_house_fee);
     assert!(protocol_fee == expected_protocol_fee);
     // Check collector fees
@@ -192,8 +204,14 @@ public fun collector_ggr_tracking_ok() {
     let protocol_fee_bps = 50;
     let house_fee_bps = 2000;
     let fee_collector_share_bps = 1000;
-    let mut state = house_state::new(house_id, protocol_fee_bps, house_fee_bps, fee_collector_share_bps, scenario.ctx());
-    
+    let mut state = house_state::new(
+        house_id,
+        protocol_fee_bps,
+        house_fee_bps,
+        fee_collector_share_bps,
+        scenario.ctx(),
+    );
+
     let fee_collector_id1 = object::id_from_address(@0xB);
     let fee_collector_id2 = object::id_from_address(@0xC);
     let (bm, bm_cap) = balance_manager::new(scenario.ctx());
@@ -201,21 +219,21 @@ public fun collector_ggr_tracking_ok() {
     // Process transactions for first collector
     let txs1 = vector[bet(10_000), win(5_000)];
     state.process_transactions(&txs1, bm.id(), fee_collector_id1, scenario.ctx());
-    
+
     // Check collector GGR
     let ggr1 = state.current_collector_ggr(fee_collector_id1);
     assert!(house_state::bet_amount(&ggr1) == 10_000);
     assert!(house_state::win_amount(&ggr1) == 5_000);
-    
+
     // Process transactions for second collector
     let txs2 = vector[bet(20_000), win(15_000)];
     state.process_transactions(&txs2, bm.id(), fee_collector_id2, scenario.ctx());
-    
+
     // Check second collector GGR
     let ggr2 = state.current_collector_ggr(fee_collector_id2);
     assert!(house_state::bet_amount(&ggr2) == 20_000);
     assert!(house_state::win_amount(&ggr2) == 15_000);
-    
+
     // First collector GGR should still be there
     let ggr1_again = state.current_collector_ggr(fee_collector_id1);
     assert!(house_state::bet_amount(&ggr1_again) == 10_000);
@@ -236,8 +254,14 @@ public fun process_end_of_day_collector_fees() {
     let protocol_fee_bps = 50;
     let house_fee_bps = 2000;
     let fee_collector_share_bps = 1000;
-    let mut state = house_state::new(house_id, protocol_fee_bps, house_fee_bps, fee_collector_share_bps, scenario.ctx());
-    
+    let mut state = house_state::new(
+        house_id,
+        protocol_fee_bps,
+        house_fee_bps,
+        fee_collector_share_bps,
+        scenario.ctx(),
+    );
+
     let fee_collector_id1 = object::id_from_address(@0xB);
     let fee_collector_id2 = object::id_from_address(@0xC);
     let (bm, bm_cap) = balance_manager::new(scenario.ctx());
@@ -245,14 +269,14 @@ public fun process_end_of_day_collector_fees() {
     // Process transactions for first collector: GGR = 5k
     let txs1 = vector[bet(10_000), win(5_000)];
     state.process_transactions(&txs1, bm.id(), fee_collector_id1, scenario.ctx());
-    
+
     // Process transactions for second collector: GGR = 5k
     let txs2 = vector[bet(20_000), win(15_000)];
     state.process_transactions(&txs2, bm.id(), fee_collector_id2, scenario.ctx());
-    
+
     // Advance epoch
     scenario.next_epoch(addr);
-    
+
     // Process end of day - fees calculated from GGR
     let (collector_fees, house_fee, protocol_fee) = state.process_end_of_day(
         scenario.ctx().epoch() - 1,
@@ -261,23 +285,24 @@ public fun process_end_of_day_collector_fees() {
         protocol_fee_bps,
         scenario.ctx(),
     );
-    
+
     // Total GGR = 5k + 5k = 10k
     let total_ggr = 10_000;
     let expected_house_fee = mul_ceil_bps(total_ggr, house_fee_bps);
     let expected_protocol_fee = mul_ceil_bps(total_ggr, protocol_fee_bps);
-    
+
     assert!(house_fee == expected_house_fee);
     assert!(protocol_fee == expected_protocol_fee);
-    
+
     // Check collector fees
     assert!(vector::length(&collector_fees) == 2);
-    
+
     // Each collector should have fee from their GGR (5k each)
     let expected_collector_fee = mul_ceil_bps(5_000, fee_collector_share_bps);
     let mut found1 = false;
     let mut found2 = false;
     let mut i = 0;
+    assert!(vector::length(&collector_fees) == 2);
     while (i < vector::length(&collector_fees)) {
         let fee = *vector::borrow(&collector_fees, i);
         if (house_state::collector_id(&fee) == fee_collector_id1) {
@@ -308,14 +333,14 @@ public fun test_volume_for_epoch() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions in epoch 0
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch
         scenario.next_epoch(addr);
-        
+
         // Process end of day for epoch 0
         state.process_end_of_day(
             scenario.ctx().epoch() - 1,
@@ -324,12 +349,12 @@ public fun test_volume_for_epoch() {
             50,
             scenario.ctx(),
         );
-        
+
         // Get volume for epoch 0
         let volumes = state.volume_for_epoch(0);
         assert!(house_state::total_bet_amount(&volumes) == 10_000, 0);
         assert!(house_state::total_win_amount(&volumes) == 5_000, 1);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -344,10 +369,10 @@ public fun test_volume_for_epoch_not_found() {
     {
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // Try to get volume for non-existent epoch
         let _volumes = state.volume_for_epoch(999);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -362,11 +387,11 @@ public fun test_all_time_profits_and_losses() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process profitable transactions: GGR = 5k
         let txs1 = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs1, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch and process
         scenario.next_epoch(addr);
         state.process_end_of_day(
@@ -376,11 +401,11 @@ public fun test_all_time_profits_and_losses() {
             50,
             scenario.ctx(),
         );
-        
+
         // Process loss transactions: GGR = -5k (loss)
         let txs2 = vector[bet(10_000), win(15_000)];
         state.process_transactions(&txs2, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch and process
         scenario.next_epoch(addr);
         state.process_end_of_day(
@@ -390,11 +415,11 @@ public fun test_all_time_profits_and_losses() {
             50,
             scenario.ctx(),
         );
-        
+
         // Check all-time stats
         assert!(state.all_time_profits() == 5_000, 0);
         assert!(state.all_time_losses() == 5_000, 1);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -411,15 +436,15 @@ public fun test_total_bet_amount_and_total_win_amount() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         let volumes = state.current_volumes();
         assert!(house_state::total_bet_amount(&volumes) == 10_000, 0);
         assert!(house_state::total_win_amount(&volumes) == 5_000, 1);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -436,11 +461,11 @@ public fun test_historic_collector_ggr() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch and process end of day
         scenario.next_epoch(addr);
         state.process_end_of_day(
@@ -450,12 +475,12 @@ public fun test_historic_collector_ggr() {
             50,
             scenario.ctx(),
         );
-        
+
         // Get historic collector GGR for epoch 0
         let historic_ggr = state.historic_collector_ggr(0, fee_collector_id);
         assert!(house_state::bet_amount(&historic_ggr) == 10_000, 0);
         assert!(house_state::win_amount(&historic_ggr) == 5_000, 1);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -471,12 +496,12 @@ public fun test_historic_collector_ggr_nonexistent_epoch() {
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Get historic GGR for non-existent epoch - should return empty
         let historic_ggr = state.historic_collector_ggr(999, fee_collector_id);
         assert!(house_state::bet_amount(&historic_ggr) == 0, 0);
         assert!(house_state::win_amount(&historic_ggr) == 0, 1);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -492,11 +517,11 @@ public fun test_historic_collector_ggr_nonexistent_collector() {
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id1 = object::id_from_address(@0xB);
         let fee_collector_id2 = object::id_from_address(@0xC);
-        
+
         // Process transactions for collector 1
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id1, scenario.ctx());
-        
+
         // Advance epoch and process
         scenario.next_epoch(addr);
         state.process_end_of_day(
@@ -506,12 +531,12 @@ public fun test_historic_collector_ggr_nonexistent_collector() {
             50,
             scenario.ctx(),
         );
-        
+
         // Get historic GGR for non-existent collector - should return empty
         let historic_ggr = state.historic_collector_ggr(0, fee_collector_id2);
         assert!(house_state::bet_amount(&historic_ggr) == 0, 0);
         assert!(house_state::win_amount(&historic_ggr) == 0, 1);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -529,24 +554,26 @@ public fun test_calculate_pending_collector_fees() {
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id1 = object::id_from_address(@0xB);
         let fee_collector_id2 = object::id_from_address(@0xC);
-        
+
         // Process transactions for two collectors
         // Collector 1: GGR = 5k
         let txs1 = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs1, bm.id(), fee_collector_id1, scenario.ctx());
-        
+
         // Collector 2: GGR = 3k
         let txs2 = vector[bet(8_000), win(5_000)];
         state.process_transactions(&txs2, bm.id(), fee_collector_id2, scenario.ctx());
-        
+
         // Calculate pending collector fees
         // fee_collector_share_bps = 1000 (10%)
         // Collector 1: 5k * 10% = 500 (rounded up)
         // Collector 2: 3k * 10% = 300 (rounded up)
         // Total: 800
         let pending_fees = state.calculate_pending_collector_fees();
-        assert!(pending_fees >= 800, 0); // At least 800 (may be more due to rounding)
-        
+        let expected_fee1 = mul_ceil_bps(5_000, 1000); // Collector 1: 5k * 10%
+        let expected_fee2 = mul_ceil_bps(3_000, 1000); // Collector 2: 3k * 10%
+        assert!(pending_fees == expected_fee1 + expected_fee2, 0);
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -561,11 +588,11 @@ public fun test_calculate_pending_collector_fees_no_ggr() {
     {
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // No transactions, so no GGR
         let pending_fees = state.calculate_pending_collector_fees();
         assert!(pending_fees == 0, 0);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -580,18 +607,19 @@ public fun test_calculate_pending_house_fees() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Calculate pending house fees
         // house_fee_bps = 2000 (20%)
         // GGR = 5k
         // Fee = 5k * 20% = 1000 (rounded up)
         let pending_fees = state.calculate_pending_house_fees();
-        assert!(pending_fees >= 1000, 0); // At least 1000 (may be more due to rounding)
-        
+        let expected_fee = mul_ceil_bps(5_000, 2000); // GGR = 5k * 20% = 1000 (rounded up)
+        assert!(pending_fees == expected_fee, 0);
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -606,11 +634,11 @@ public fun test_calculate_pending_house_fees_no_ggr() {
     {
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // No transactions, so no GGR
         let pending_fees = state.calculate_pending_house_fees();
         assert!(pending_fees == 0, 0);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -625,15 +653,15 @@ public fun test_calculate_pending_house_fees_zero_fee_bps() {
         let mut state = house_state::new(house_id, 50, 0, 1000, scenario.ctx()); // house_fee_bps = 0
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // With zero house fee, should return 0
         let pending_fees = state.calculate_pending_house_fees();
         assert!(pending_fees == 0, 0);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -650,18 +678,19 @@ public fun test_calculate_pending_protocol_fees() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx()); // protocol_fee_bps = 50 (0.5%)
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Calculate pending protocol fees
         // protocol_fee_bps = 50 (0.5%)
         // GGR = 5k
         // Fee = 5k * 0.5% = 25 (rounded up)
         let pending_fees = state.calculate_pending_protocol_fees();
-        assert!(pending_fees >= 25, 0); // At least 25 (may be more due to rounding)
-        
+        let expected_fee = mul_ceil_bps(5_000, 50); // GGR = 5k * 0.5% = 25 (rounded up)
+        assert!(pending_fees == expected_fee, 0);
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -676,11 +705,11 @@ public fun test_calculate_pending_protocol_fees_no_ggr() {
     {
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // No transactions, so no GGR
         let pending_fees = state.calculate_pending_protocol_fees();
         assert!(pending_fees == 0, 0);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -695,15 +724,15 @@ public fun test_calculate_pending_protocol_fees_zero_fee_bps() {
         let mut state = house_state::new(house_id, 0, 2000, 1000, scenario.ctx()); // protocol_fee_bps = 0
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // With zero protocol fee, should return 0
         let pending_fees = state.calculate_pending_protocol_fees();
         assert!(pending_fees == 0, 0);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -720,19 +749,20 @@ public fun test_calculate_total_pending_fees() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Calculate total pending fees
         // protocol_fee_bps = 50 (0.5%), house_fee_bps = 2000 (20%), fee_collector_share_bps = 1000 (10%)
         // Total fee bps = 3050 (30.5%)
         // GGR = 5k
         // Total fee = 5k * 30.5% = 1525 (rounded up)
         let total_pending = state.calculate_total_pending_fees();
-        assert!(total_pending >= 1525, 0); // At least 1525 (may be more due to rounding)
-        
+        let expected_fee = mul_ceil_bps(5_000, 3050); // GGR = 5k * 30.5% = 1525 (rounded up)
+        assert!(total_pending == expected_fee, 0);
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -747,11 +777,11 @@ public fun test_calculate_total_pending_fees_no_ggr() {
     {
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // No transactions, so no GGR
         let total_pending = state.calculate_total_pending_fees();
         assert!(total_pending == 0, 0);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -764,22 +794,22 @@ public fun test_total_shares() {
     {
         let house_id = object::id_from_address(@0x0);
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // Initially no shares
         assert!(state.total_shares() == 0, 0);
-        
+
         // Mint shares
         state.mint_shares(100);
         assert!(state.total_shares() == 100, 1);
-        
+
         // Mint more
         state.mint_shares(50);
         assert!(state.total_shares() == 150, 2);
-        
+
         // Burn some
         state.burn_shares(30);
         assert!(state.total_shares() == 120, 3);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -794,14 +824,14 @@ public fun test_process_end_of_day_collector_no_ggr() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions with equal bets and wins (no GGR)
         let txs = vector[bet(10_000), win(10_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch
         scenario.next_epoch(addr);
-        
+
         // Process end of day - collector fees should be empty (no GGR = no fees)
         let (collector_fees, house_fee, protocol_fee) = state.process_end_of_day(
             scenario.ctx().epoch() - 1,
@@ -810,11 +840,11 @@ public fun test_process_end_of_day_collector_no_ggr() {
             50,
             scenario.ctx(),
         );
-        
+
         assert!(vector::length(&collector_fees) == 0, 0);
         assert!(house_fee == 0, 1);
         assert!(protocol_fee == 0, 2);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -831,16 +861,16 @@ public fun test_process_end_of_day_resets_collector_ggr() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Check current GGR
         let ggr = state.current_collector_ggr(fee_collector_id);
         assert!(house_state::bet_amount(&ggr) == 10_000, 0);
         assert!(house_state::win_amount(&ggr) == 5_000, 1);
-        
+
         // Advance epoch and process end of day
         scenario.next_epoch(addr);
         state.process_end_of_day(
@@ -850,12 +880,12 @@ public fun test_process_end_of_day_resets_collector_ggr() {
             50,
             scenario.ctx(),
         );
-        
+
         // Current GGR should be reset
         let ggr_after = state.current_collector_ggr(fee_collector_id);
         assert!(house_state::bet_amount(&ggr_after) == 0, 2);
         assert!(house_state::win_amount(&ggr_after) == 0, 3);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -872,11 +902,11 @@ public fun test_process_end_of_day_saves_collector_ggr_to_history() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch and process end of day
         scenario.next_epoch(addr);
         state.process_end_of_day(
@@ -886,12 +916,12 @@ public fun test_process_end_of_day_saves_collector_ggr_to_history() {
             50,
             scenario.ctx(),
         );
-        
+
         // Historic GGR should be saved
         let historic_ggr = state.historic_collector_ggr(0, fee_collector_id);
         assert!(house_state::bet_amount(&historic_ggr) == 10_000, 0);
         assert!(house_state::win_amount(&historic_ggr) == 5_000, 1);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -908,12 +938,41 @@ public fun test_new_captures_fees() {
         let protocol_fee_bps = 50;
         let house_fee_bps = 2000;
         let fee_collector_share_bps = 1000;
-        let state = house_state::new(house_id, protocol_fee_bps, house_fee_bps, fee_collector_share_bps, scenario.ctx());
-        
-        // Fees should be captured at creation
-        // We can't directly access the internal fee fields, but we can verify through calculations
-        // If we process transactions and calculate fees, they should use the captured fees
-        
+        let mut state = house_state::new(
+            house_id,
+            protocol_fee_bps,
+            house_fee_bps,
+            fee_collector_share_bps,
+            scenario.ctx(),
+        );
+
+        // Verify initial fees are captured at creation
+        assert!(state.current_epoch_protocol_fee_bps() == protocol_fee_bps, 0);
+        assert!(state.current_epoch_house_fee_bps() == house_fee_bps, 1);
+        assert!(state.current_epoch_fee_collector_share_bps() == fee_collector_share_bps, 2);
+
+        // Now change the fees and verify they are captured on end of day
+        let new_protocol_fee_bps = 75;
+        let new_house_fee_bps = 2500;
+        let new_fee_collector_share_bps = 1500;
+
+        // Advance epoch to trigger end of day processing
+        scenario.next_epoch(addr);
+
+        // Process end of day with new fees - these should be captured for the new epoch
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            new_house_fee_bps,
+            new_fee_collector_share_bps,
+            new_protocol_fee_bps,
+            scenario.ctx(),
+        );
+
+        // Verify fees have been updated to the new values
+        assert!(state.current_epoch_protocol_fee_bps() == new_protocol_fee_bps, 3);
+        assert!(state.current_epoch_house_fee_bps() == new_house_fee_bps, 4);
+        assert!(state.current_epoch_fee_collector_share_bps() == new_fee_collector_share_bps, 5);
+
         destroy(state);
         scenario.end();
     }
@@ -924,13 +983,16 @@ public fun test_epoch() {
     let addr = @0xA;
     let mut scenario = begin(addr);
     {
+        scenario.next_epoch(addr);
+        scenario.next_epoch(addr);
+
         let house_id = object::id_from_address(@0x0);
         let state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // Epoch should match current epoch
         let current_epoch = scenario.ctx().epoch();
         assert!(state.epoch() == current_epoch, 0);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -945,24 +1007,28 @@ public fun test_process_collector_end_of_day_direct() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Process collector end of day directly (package function)
-        let collector_fees = house_state::process_collector_end_of_day(&mut state, 0, scenario.ctx());
+        let collector_fees = house_state::process_collector_end_of_day(
+            &mut state,
+            0,
+            scenario.ctx(),
+        );
         assert!(vector::length(&collector_fees) == 1, 0);
-        
+
         let fee = *vector::borrow(&collector_fees, 0);
         assert!(house_state::collector_id(&fee) == fee_collector_id, 1);
         assert!(house_state::fee_amount(&fee) > 0, 2);
-        
+
         // Current GGR should be reset
         let ggr = state.current_collector_ggr(fee_collector_id);
         assert!(house_state::bet_amount(&ggr) == 0, 3);
         assert!(house_state::win_amount(&ggr) == 0, 4);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -980,19 +1046,23 @@ public fun test_process_collector_end_of_day_multiple_collectors() {
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id1 = object::id_from_address(@0xB);
         let fee_collector_id2 = object::id_from_address(@0xC);
-        
+
         // Process transactions for collector 1: GGR = 5k
         let txs1 = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs1, bm.id(), fee_collector_id1, scenario.ctx());
-        
+
         // Process transactions for collector 2: GGR = 3k
         let txs2 = vector[bet(8_000), win(5_000)];
         state.process_transactions(&txs2, bm.id(), fee_collector_id2, scenario.ctx());
-        
+
         // Process collector end of day
-        let collector_fees = house_state::process_collector_end_of_day(&mut state, 0, scenario.ctx());
+        let collector_fees = house_state::process_collector_end_of_day(
+            &mut state,
+            0,
+            scenario.ctx(),
+        );
         assert!(vector::length(&collector_fees) == 2, 0);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -1007,11 +1077,15 @@ public fun test_process_collector_end_of_day_no_collectors() {
     {
         let house_id = object::id_from_address(@0x0);
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
-        
+
         // Process collector end of day with no collector activity
-        let collector_fees = house_state::process_collector_end_of_day(&mut state, 0, scenario.ctx());
+        let collector_fees = house_state::process_collector_end_of_day(
+            &mut state,
+            0,
+            scenario.ctx(),
+        );
         assert!(vector::length(&collector_fees) == 0, 0);
-        
+
         destroy(state);
         scenario.end();
     }
@@ -1026,15 +1100,19 @@ public fun test_process_collector_end_of_day_collector_with_loss() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions with loss (win > bet): GGR = -5k (no GGR)
         let txs = vector[bet(10_000), win(15_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Process collector end of day - should return empty (no GGR = no fees)
-        let collector_fees = house_state::process_collector_end_of_day(&mut state, 0, scenario.ctx());
+        let collector_fees = house_state::process_collector_end_of_day(
+            &mut state,
+            0,
+            scenario.ctx(),
+        );
         assert!(vector::length(&collector_fees) == 0, 0);
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -1051,14 +1129,14 @@ public fun test_process_transactions_epoch_mismatch() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Advance epoch
         scenario.next_epoch(addr);
-        
+
         // Try to process transactions in wrong epoch - should fail
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
@@ -1069,13 +1147,13 @@ public fun test_process_transactions_epoch_mismatch() {
 #[test]
 public fun test_empty_collector_ggr() {
     let addr = @0xA;
-    let mut scenario = begin(addr);
+    let scenario = begin(addr);
     {
         // Test the empty_collector_ggr function
         let ggr = house_state::empty_collector_ggr();
         assert!(house_state::bet_amount(&ggr) == 0, 0);
         assert!(house_state::win_amount(&ggr) == 0, 1);
-        
+
         scenario.end();
     }
 }
@@ -1089,11 +1167,11 @@ public fun test_collector_id_and_fee_amount() {
         let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
         let (bm, bm_cap) = balance_manager::new(scenario.ctx());
         let fee_collector_id = object::id_from_address(@0xB);
-        
+
         // Process transactions: GGR = 5k
         let txs = vector[bet(10_000), win(5_000)];
         state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
-        
+
         // Advance epoch and process end of day
         scenario.next_epoch(addr);
         let (collector_fees, _house_fee, _protocol_fee) = state.process_end_of_day(
@@ -1103,13 +1181,272 @@ public fun test_collector_id_and_fee_amount() {
             50,
             scenario.ctx(),
         );
-        
+
         // Test collector_id and fee_amount functions
         assert!(vector::length(&collector_fees) == 1, 0);
         let fee = *vector::borrow(&collector_fees, 0);
         assert!(house_state::collector_id(&fee) == fee_collector_id, 1);
-        assert!(house_state::fee_amount(&fee) > 0, 2);
-        
+        assert!(house_state::fee_amount(&fee) == mul_ceil_bps(5_000, 1000), 2);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}
+
+#[test]
+public fun test_pending_collector_fees_reset_after_eod() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id = object::id_from_address(@0xB);
+
+        // Process transactions: GGR = 5k
+        let txs = vector[bet(10_000), win(5_000)];
+        state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
+
+        // Check pending collector fees are non-zero
+        let pending_before = state.calculate_pending_collector_fees();
+        assert!(pending_before > 0, 0);
+
+        // Advance epoch and process end of day
+        scenario.next_epoch(addr);
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            2000,
+            1000,
+            50,
+            scenario.ctx(),
+        );
+
+        // Check pending collector fees are reset to zero
+        let pending_after = state.calculate_pending_collector_fees();
+        assert!(pending_after == 0, 1);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}
+
+#[test]
+public fun test_pending_house_fees_reset_after_eod() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id = object::id_from_address(@0xB);
+
+        // Process transactions: GGR = 5k
+        let txs = vector[bet(10_000), win(5_000)];
+        state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
+
+        // Check pending house fees are non-zero
+        let pending_before = state.calculate_pending_house_fees();
+        assert!(pending_before > 0, 0);
+
+        // Advance epoch and process end of day
+        scenario.next_epoch(addr);
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            2000,
+            1000,
+            50,
+            scenario.ctx(),
+        );
+
+        // Check pending house fees are reset to zero
+        let pending_after = state.calculate_pending_house_fees();
+        assert!(pending_after == 0, 1);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}
+
+#[test]
+public fun test_pending_protocol_fees_reset_after_eod() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id = object::id_from_address(@0xB);
+
+        // Process transactions: GGR = 5k
+        let txs = vector[bet(10_000), win(5_000)];
+        state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
+
+        // Check pending protocol fees are non-zero
+        let pending_before = state.calculate_pending_protocol_fees();
+        assert!(pending_before > 0, 0);
+
+        // Advance epoch and process end of day
+        scenario.next_epoch(addr);
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            2000,
+            1000,
+            50,
+            scenario.ctx(),
+        );
+
+        // Check pending protocol fees are reset to zero
+        let pending_after = state.calculate_pending_protocol_fees();
+        assert!(pending_after == 0, 1);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}
+
+#[test]
+public fun test_total_pending_fees_reset_after_eod() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id = object::id_from_address(@0xB);
+
+        // Process transactions: GGR = 5k
+        let txs = vector[bet(10_000), win(5_000)];
+        state.process_transactions(&txs, bm.id(), fee_collector_id, scenario.ctx());
+
+        // Check total pending fees are non-zero
+        let pending_before = state.calculate_total_pending_fees();
+        assert!(pending_before > 0, 0);
+
+        // Advance epoch and process end of day
+        scenario.next_epoch(addr);
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            2000,
+            1000,
+            50,
+            scenario.ctx(),
+        );
+
+        // Check total pending fees are reset to zero
+        let pending_after = state.calculate_total_pending_fees();
+        assert!(pending_after == 0, 1);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}
+
+#[test]
+public fun test_all_pending_fees_reset_after_eod_comprehensive() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id1 = object::id_from_address(@0xB);
+        let fee_collector_id2 = object::id_from_address(@0xC);
+
+        // Process transactions for multiple collectors: GGR = 5k + 3k = 8k total
+        let txs1 = vector[bet(10_000), win(5_000)];
+        state.process_transactions(&txs1, bm.id(), fee_collector_id1, scenario.ctx());
+
+        let txs2 = vector[bet(8_000), win(5_000)];
+        state.process_transactions(&txs2, bm.id(), fee_collector_id2, scenario.ctx());
+
+        // Check all pending fees are non-zero
+        let collector_pending_before = state.calculate_pending_collector_fees();
+        let house_pending_before = state.calculate_pending_house_fees();
+        let protocol_pending_before = state.calculate_pending_protocol_fees();
+        let total_pending_before = state.calculate_total_pending_fees();
+
+        assert!(collector_pending_before > 0, 0);
+        assert!(house_pending_before > 0, 1);
+        assert!(protocol_pending_before > 0, 2);
+        assert!(total_pending_before > 0, 3);
+
+        // Advance epoch and process end of day
+        scenario.next_epoch(addr);
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            2000,
+            1000,
+            50,
+            scenario.ctx(),
+        );
+
+        // Check all pending fees are reset to zero
+        let collector_pending_after = state.calculate_pending_collector_fees();
+        let house_pending_after = state.calculate_pending_house_fees();
+        let protocol_pending_after = state.calculate_pending_protocol_fees();
+        let total_pending_after = state.calculate_total_pending_fees();
+
+        assert!(collector_pending_after == 0, 4);
+        assert!(house_pending_after == 0, 5);
+        assert!(protocol_pending_after == 0, 6);
+        assert!(total_pending_after == 0, 7);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}
+
+#[test]
+public fun test_pending_fees_reset_then_new_epoch_accumulates() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let mut state = house_state::new(house_id, 50, 2000, 1000, scenario.ctx());
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id = object::id_from_address(@0xB);
+
+        // Epoch 0: Process transactions: GGR = 5k
+        let txs1 = vector[bet(10_000), win(5_000)];
+        state.process_transactions(&txs1, bm.id(), fee_collector_id, scenario.ctx());
+
+        let pending_before_eod = state.calculate_total_pending_fees();
+        assert!(pending_before_eod > 0, 0);
+
+        // Process end of day for epoch 0
+        scenario.next_epoch(addr);
+        state.process_end_of_day(
+            scenario.ctx().epoch() - 1,
+            2000,
+            1000,
+            50,
+            scenario.ctx(),
+        );
+
+        // Pending fees should be reset
+        let pending_after_eod = state.calculate_total_pending_fees();
+        assert!(pending_after_eod == 0, 1);
+
+        // Epoch 1: Process new transactions: GGR = 3k
+        let txs2 = vector[bet(8_000), win(5_000)];
+        state.process_transactions(&txs2, bm.id(), fee_collector_id, scenario.ctx());
+
+        // Pending fees should accumulate again in new epoch
+        let pending_new_epoch = state.calculate_total_pending_fees();
+        assert!(pending_new_epoch > 0, 2);
+
         destroy(state);
         destroy(bm);
         destroy(bm_cap);
