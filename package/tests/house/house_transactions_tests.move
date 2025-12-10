@@ -221,7 +221,7 @@ fun bet_without_funds_fails_even_if_win_higher() {
 
     // Fund house
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     let tx_cap = house.tx_cap_for_testing(game_id);
 
@@ -253,7 +253,7 @@ fun bet_without_funds_fails_when_win_equals_bet() {
     assert_eq!(balance_manager.balance(), 0);
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     let tx_cap = house.tx_cap_for_testing(game_id);
 
@@ -289,7 +289,7 @@ fun bet_with_sufficient_funds_works() {
 
     // Fund house
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     let tx_cap = house.tx_cap_for_testing(game_id);
     let mut stats = game_stats::stats_for_testing(game_id, scenario.ctx());
@@ -333,7 +333,7 @@ fun house_insufficient_funds_fails() {
 
     // Fund house with only 100k
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     let tx_cap = house.tx_cap_for_testing(game_id);
 
@@ -414,9 +414,9 @@ fun multi_round_with_epoch_transitions() {
 
     // Fund house
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // Round 1: bet 10k, win 5k = profit 5k
     let tx_cap = house.tx_cap_for_testing(game_id);
@@ -482,9 +482,9 @@ fun profit_then_loss_nets_out() {
     balance_manager.deposit(&balance_manager_cap, bm_deposit, scenario.ctx());
 
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // Round 1: profit 5k
     let tx_cap = house.tx_cap_for_testing(game_id);
@@ -553,9 +553,9 @@ fun process_transactions_version_disabled_fails() {
     balance_manager.deposit(&balance_manager_cap, bm_deposit, scenario.ctx());
 
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // Disable version
     let admin_cap = registry::cap_for_testing(scenario.ctx());
@@ -586,9 +586,9 @@ fun process_transactions_no_bm_version_disabled_fails() {
     let mut participation2 = participation::empty(house.id(), scenario.ctx());
 
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // Disable version
     let admin_cap = registry::cap_for_testing(scenario.ctx());

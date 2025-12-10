@@ -39,7 +39,7 @@ public fun fund_house_for_playing(
 ): Participation {
     let mut participation = house.new_participation(ctx);
     let deposit = mint_for_testing<SUI>(amount, ctx);
-    house.buy_shares(registry, &mut participation, deposit, ctx);
+    house.buy_shares(registry, &mut participation, deposit, 0, ctx);
     participation
 }
 

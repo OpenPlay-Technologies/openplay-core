@@ -26,7 +26,7 @@ fun buy_shares_first_deposit_uses_one_to_one_ratio() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    let shares = house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     assert!(shares == 100_000);
     assert!(participation::shares(&participation) == 100_000);
@@ -51,12 +51,12 @@ fun buy_shares_second_deposit_with_nav_one() {
 
     // First deposit: 20k
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    let shares1 = house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    let shares1 = house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     assert!(shares1 == 20_000);
 
     // Second deposit: 80k (NAV still = 1)
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    let shares2 = house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    let shares2 = house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
     assert!(shares2 == 80_000);
 
     assert!(house.house_balance() == 100_000);
@@ -79,7 +79,7 @@ fun buy_shares_zero_deposit_fails() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(0, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
     abort 0
 }
 
@@ -97,10 +97,10 @@ fun sell_shares_all_returns_full_amount() {
 
     // Buy shares
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    let shares = house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Sell all
-    let payout = house.sell_shares(&registry, &mut participation, shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, shares, 0, scenario.ctx());
 
     assert!(participation::shares(&participation) == 0);
     assert!(payout.value() == 100_000);
@@ -124,11 +124,11 @@ fun sell_shares_all_zeros_house_balance() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
     assert!(house.house_balance() == 100_000);
 
     let shares = participation::shares(&participation);
-    let payout = house.sell_shares(&registry, &mut participation, shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, shares, 0, scenario.ctx());
 
     // Advance epoch to finalize
     scenario.next_epoch(addr);
@@ -152,10 +152,10 @@ fun sell_shares_partial() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Sell half
-    let payout = house.sell_shares(&registry, &mut participation, 50_000, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, 50_000, 0, scenario.ctx());
 
     assert!(participation::shares(&participation) == 50_000);
     assert!(payout.value() == 50_000);
@@ -179,10 +179,10 @@ fun sell_shares_insufficient_fails() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Try to sell more than available
-    let _payout = house.sell_shares(&registry, &mut participation, 1_000_000, scenario.ctx());
+    let _payout = house.sell_shares(&registry, &mut participation, 1_000_000, 0, scenario.ctx());
     abort 0
 }
 
@@ -202,11 +202,11 @@ fun buy_sell_multiple_participants() {
 
     // Participant 1 buys 30k
     let deposit1 = mint_for_testing<SUI>(30_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
 
     // Participant 2 buys 120k
     let deposit2 = mint_for_testing<SUI>(120_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     assert!(house.house_balance() == 150_000);
 
@@ -216,6 +216,7 @@ fun buy_sell_multiple_participants() {
         &registry,
         &mut participation1,
         shares1,
+        0,
         scenario.ctx(),
     );
     assert!(payout1.value() == 30_000);
@@ -226,7 +227,7 @@ fun buy_sell_multiple_participants() {
 
     // Participant 1 buys again
     let deposit3 = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit3, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit3, 0, scenario.ctx());
 
     // Participant 2 sells all
     let shares2 = participation::shares(&participation2);
@@ -234,6 +235,7 @@ fun buy_sell_multiple_participants() {
         &registry,
         &mut participation2,
         shares2,
+        0,
         scenario.ctx(),
     );
     assert!(payout2.value() == 120_000);
@@ -246,6 +248,7 @@ fun buy_sell_multiple_participants() {
         &registry,
         &mut participation1,
         shares1_remaining,
+        0,
         scenario.ctx(),
     );
     assert!(payout3.value() == 100_000);
@@ -277,7 +280,7 @@ fun nav_equals_balance_with_no_fees() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     assert!(house.total_shares() == 100_000);
     assert!(house.effective_house_balance() == 100_000);
@@ -316,10 +319,10 @@ fun nav_proportional_to_shares() {
 
     // 20% to participation1, 80% to participation2
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
 
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // NAV should be proportional
     let nav1 = house.nav(&participation1);
@@ -357,9 +360,9 @@ fun shares_lose_value_after_house_loss() {
 
     // Fund house: 20k + 80k = 100k
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // Fund balance manager for player
     let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -416,9 +419,9 @@ fun shares_gain_value_after_house_profit() {
 
     // Fund house: 20k + 80k = 100k
     let deposit1 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(80_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     // Fund balance manager
     let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -488,9 +491,9 @@ fun buy_shares_after_loss_gives_more_shares_and_sell_returns_nav() {
 
     // Fund house with 150k total (30k + 120k)
     let deposit1 = mint_for_testing<SUI>(30_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(120_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     assert!(house.house_balance() == 150_000);
     assert!(house.total_shares() == 150_000);
@@ -521,7 +524,7 @@ fun buy_shares_after_loss_gives_more_shares_and_sell_returns_nav() {
     // Buy 20k more for a new participation
     let mut new_participation = participation::empty(house.id(), scenario.ctx());
     let deposit3 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    let new_shares = house.buy_shares(&registry, &mut new_participation, deposit3, scenario.ctx());
+    let new_shares = house.buy_shares(&registry, &mut new_participation, deposit3, 0, scenario.ctx());
 
     // Should get MORE than 20k shares because NAV < 1
     // shares = (deposit * total_shares) / effective_value
@@ -548,7 +551,7 @@ fun buy_shares_after_loss_gives_more_shares_and_sell_returns_nav() {
     assert!(nav <= 20_000);
 
     // Now sell the shares and verify we get NAV back
-    let payout = house.sell_shares(&registry, &mut new_participation, new_shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut new_participation, new_shares, 0, scenario.ctx());
     assert!(payout.value() == nav);
 
     burn_for_testing(payout);
@@ -582,9 +585,9 @@ fun buy_shares_after_profit_gives_less_shares_and_sell_returns_nav() {
 
     // Fund house with 150k total (30k + 120k)
     let deposit1 = mint_for_testing<SUI>(30_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation1, deposit1, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
     let deposit2 = mint_for_testing<SUI>(120_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, deposit2, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
 
     assert!(house.house_balance() == 150_000);
     assert!(house.total_shares() == 150_000);
@@ -629,7 +632,7 @@ fun buy_shares_after_profit_gives_less_shares_and_sell_returns_nav() {
     assert!(effective_before > total_shares_before); // NAV > 1
 
     let deposit3 = mint_for_testing<SUI>(20_000, scenario.ctx());
-    let new_shares = house.buy_shares(&registry, &mut new_participation, deposit3, scenario.ctx());
+    let new_shares = house.buy_shares(&registry, &mut new_participation, deposit3, 0, scenario.ctx());
 
     // Should get LESS than 20k shares because NAV > 1
     // shares = (20_000 * 150_000) / (165_000 - 4575) = (20_000 * 150_000) / 160_425
@@ -650,7 +653,7 @@ fun buy_shares_after_profit_gives_less_shares_and_sell_returns_nav() {
     assert!(nav <= 20_000);
 
     // Now sell the shares and verify we get NAV back
-    let payout = house.sell_shares(&registry, &mut new_participation, new_shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut new_participation, new_shares, 0, scenario.ctx());
     assert!(payout.value() == nav);
 
     burn_for_testing(payout);
@@ -682,7 +685,7 @@ fun nav_unchanged_after_epoch_transition_with_fees() {
 
     // Fund house with 100k
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Fund balance manager
     let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -753,7 +756,7 @@ fun nav_unchanged_after_epoch_transition_with_fees() {
 
     // Verify we can sell and get the correct NAV amount
     let shares = participation::shares(&participation);
-    let payout = house.sell_shares(&registry, &mut participation, shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, shares, 0, scenario.ctx());
     assert!(payout.value() == nav_after);
 
     burn_for_testing(payout);
@@ -781,10 +784,10 @@ fun sell_shares_zero_succeeds() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Sell zero shares
-    let payout = house.sell_shares(&registry, &mut participation, 0, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, 0, 0, scenario.ctx());
     assert!(payout.value() == 0);
     assert!(participation::shares(&participation) == 100_000); // unchanged
 
@@ -819,7 +822,7 @@ fun effective_house_balance_zero_when_fees_exceed_value() {
 
     // Fund house with only 1000
     let deposit = mint_for_testing<SUI>(1_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Fund balance manager
     let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
@@ -878,7 +881,7 @@ fun buy_shares_tiny_deposit_high_nav_fails() {
 
     // Fund house with 1M
     let deposit = mint_for_testing<SUI>(1_000_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Fund balance manager
     let player_deposit = mint_for_testing<SUI>(500_000, scenario.ctx());
@@ -901,7 +904,7 @@ fun buy_shares_tiny_deposit_high_nav_fails() {
     // Trying to buy 1 MIST when NAV is high results in 0 shares
     let mut participation2 = participation::empty(house.id(), scenario.ctx());
     let tiny_deposit = mint_for_testing<SUI>(1, scenario.ctx());
-    house.buy_shares(&registry, &mut participation2, tiny_deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, tiny_deposit, 0, scenario.ctx());
     abort 0
 }
 
@@ -916,7 +919,7 @@ fun multiple_epoch_skips_without_activity() {
 
     // Fund house
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     let initial_balance = house.house_balance();
     let initial_shares = house.total_shares();
@@ -954,7 +957,7 @@ fun refresh_state_noop_same_epoch() {
     let mut participation = participation::empty(house.id(), scenario.ctx());
 
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     let balance_before = house.house_balance();
     let shares_before = house.total_shares();
@@ -997,11 +1000,11 @@ fun private_house_admin_buy_sell_shares() {
 
     // Admin can buy shares
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    let shares = house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
     assert!(shares == 100_000);
 
     // Admin can sell shares
-    let payout = house.sell_shares(&registry, &mut participation, shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, shares, 0, scenario.ctx());
     assert!(payout.value() == 100_000);
 
     burn_for_testing(payout);
@@ -1036,7 +1039,7 @@ fun sell_shares_when_effective_value_is_zero() {
 
     // Fund house with minimal amount
     let deposit = mint_for_testing<SUI>(100, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // Fund balance manager
     let player_deposit = mint_for_testing<SUI>(1_000_000, scenario.ctx());
@@ -1069,10 +1072,354 @@ fun sell_shares_when_effective_value_is_zero() {
 
     // Sell all shares - should get effective value back
     let shares = participation::shares(&participation);
-    let payout = house.sell_shares(&registry, &mut participation, shares, scenario.ctx());
+    let payout = house.sell_shares(&registry, &mut participation, shares, 0, scenario.ctx());
 
     // Payout should be effective value (all shares belong to this participation)
     assert!(payout.value() == effective);
+
+    burn_for_testing(payout);
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(participation);
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap);
+    destroy(stats);
+    scenario.end();
+}
+
+// ============================================================
+// Slippage Protection Tests
+// ============================================================
+
+#[test]
+/// buy_shares succeeds when min_shares_out is exactly met.
+fun buy_shares_slippage_exact_match() {
+    let mut scenario = begin(@0xa);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+
+    // At NAV = 1, depositing 100_000 should yield exactly 100_000 shares
+    let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 100_000, scenario.ctx());
+
+    assert!(shares == 100_000);
+
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(participation);
+    scenario.end();
+}
+
+#[test]
+/// buy_shares succeeds when receiving more shares than minimum.
+fun buy_shares_slippage_receives_more() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation1 = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = openplay_core::balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Fund house with initial deposit
+    let deposit1 = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
+
+    // Fund balance manager
+    let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, player_deposit, scenario.ctx());
+
+    // Process loss: bet 10k, win 20k = house loses 10k (NAV drops)
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = openplay_core::game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[openplay_core::transaction::bet(10_000), openplay_core::transaction::win(20_000)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // NAV < 1, so 20k deposit should yield MORE than 20k shares
+    // Ask for only 20k shares (min), should succeed and get more
+    let mut participation2 = participation::empty(house.id(), scenario.ctx());
+    let deposit2 = mint_for_testing<SUI>(20_000, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation2, deposit2, 20_000, scenario.ctx());
+
+    // Should have received more than 20k shares since NAV < 1
+    assert!(shares > 20_000);
+
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(participation1);
+    destroy(participation2);
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap);
+    destroy(stats);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = house::ESlippageExceeded)]
+/// buy_shares fails when receiving fewer shares than minimum.
+fun buy_shares_slippage_exceeded_fails() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, _admin_cap) = default_house(scenario.ctx());
+    let mut participation1 = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = openplay_core::balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Fund house with initial deposit
+    let deposit1 = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
+
+    // Fund balance manager
+    let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, player_deposit, scenario.ctx());
+
+    // Process profit: bet 20k, win 5k = house gains 15k (NAV rises)
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = openplay_core::game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[openplay_core::transaction::bet(20_000), openplay_core::transaction::win(5_000)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // NAV > 1, so 20k deposit yields LESS than 20k shares
+    // Ask for exactly 20k shares (too high), should FAIL
+    let mut participation2 = participation::empty(house.id(), scenario.ctx());
+    let deposit2 = mint_for_testing<SUI>(20_000, scenario.ctx());
+    house.buy_shares(&registry, &mut participation2, deposit2, 20_000, scenario.ctx());
+
+    abort 0
+}
+
+#[test]
+/// sell_shares succeeds when min_sui_out is exactly met.
+fun sell_shares_slippage_exact_match() {
+    let mut scenario = begin(@0xa);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+
+    // Buy shares at NAV = 1
+    let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
+
+    // Sell all shares, expecting exactly 100_000 SUI (NAV = 1)
+    let payout = house.sell_shares(&registry, &mut participation, 100_000, 100_000, scenario.ctx());
+
+    assert!(payout.value() == 100_000);
+
+    burn_for_testing(payout);
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(participation);
+    scenario.end();
+}
+
+#[test]
+/// sell_shares succeeds when receiving more SUI than minimum.
+fun sell_shares_slippage_receives_more() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = openplay_core::balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Buy shares at NAV = 1
+    let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
+
+    // Fund balance manager
+    let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, player_deposit, scenario.ctx());
+
+    // Process profit: bet 20k, win 0 = house gains 20k
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = openplay_core::game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[openplay_core::transaction::bet(20_000), openplay_core::transaction::win(0)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // NAV > 1, so selling shares should yield MORE than original deposit
+    // Ask for only 100_000 SUI (min), should succeed and get more
+    let payout = house.sell_shares(&registry, &mut participation, shares, 100_000, scenario.ctx());
+
+    // Should have received more than 100k (after accounting for pending fees)
+    assert!(payout.value() > 100_000);
+
+    burn_for_testing(payout);
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(participation);
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap);
+    destroy(stats);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = house::ESlippageExceeded)]
+/// sell_shares fails when receiving less SUI than minimum.
+fun sell_shares_slippage_exceeded_fails() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, _admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = openplay_core::balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Buy shares at NAV = 1
+    let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
+
+    // Fund balance manager
+    let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, player_deposit, scenario.ctx());
+
+    // Process loss: bet 10k, win 30k = house loses 20k (NAV drops)
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = openplay_core::game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[openplay_core::transaction::bet(10_000), openplay_core::transaction::win(30_000)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // NAV < 1, so selling shares yields LESS than original deposit
+    // Ask for exactly 100_000 SUI (too high), should FAIL
+    let _payout = house.sell_shares(&registry, &mut participation, shares, 100_000, scenario.ctx());
+
+    abort 0
+}
+
+#[test]
+/// Zero slippage protection (min = 0) always succeeds.
+fun buy_shares_zero_slippage_always_succeeds() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation1 = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = openplay_core::balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Fund house
+    let deposit1 = mint_for_testing<SUI>(100_000, scenario.ctx());
+    house.buy_shares(&registry, &mut participation1, deposit1, 0, scenario.ctx());
+
+    // Fund balance manager
+    let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, player_deposit, scenario.ctx());
+
+    // Process profit to raise NAV
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = openplay_core::game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[openplay_core::transaction::bet(20_000), openplay_core::transaction::win(5_000)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // With min_shares_out = 0, always succeeds even with high NAV
+    let mut participation2 = participation::empty(house.id(), scenario.ctx());
+    let deposit2 = mint_for_testing<SUI>(20_000, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation2, deposit2, 0, scenario.ctx());
+
+    // Will get fewer shares than deposit amount, but succeeds
+    assert!(shares < 20_000);
+    assert!(shares > 0);
+
+    destroy(house);
+    destroy(registry);
+    destroy(admin_cap);
+    destroy(participation1);
+    destroy(participation2);
+    destroy(balance_manager);
+    destroy(balance_manager_cap);
+    destroy(play_cap);
+    destroy(stats);
+    scenario.end();
+}
+
+#[test]
+/// Zero slippage protection on sell (min = 0) always succeeds.
+fun sell_shares_zero_slippage_always_succeeds() {
+    let addr = @0xa;
+    let mut scenario = begin(addr);
+    let game_id = object::id_from_address(addr);
+    let registry = registry_for_testing(scenario.ctx());
+    let (mut house, admin_cap) = default_house(scenario.ctx());
+    let mut participation = participation::empty(house.id(), scenario.ctx());
+    let (mut balance_manager, balance_manager_cap) = openplay_core::balance_manager::new(scenario.ctx());
+    let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
+
+    // Buy shares
+    let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
+    let shares = house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
+
+    // Fund balance manager
+    let player_deposit = mint_for_testing<SUI>(50_000, scenario.ctx());
+    balance_manager.deposit(&balance_manager_cap, player_deposit, scenario.ctx());
+
+    // Process big loss: house loses 40k
+    let tx_cap = house.tx_cap_for_testing(game_id);
+    let mut stats = openplay_core::game_stats::stats_for_testing(game_id, scenario.ctx());
+    house.tx_admin_process_transactions_v2(
+        &registry,
+        &mut stats,
+        tx_cap,
+        &mut balance_manager,
+        &vector[openplay_core::transaction::bet(10_000), openplay_core::transaction::win(50_000)],
+        &play_cap,
+        scenario.ctx(),
+    );
+
+    // With min_sui_out = 0, always succeeds even with low NAV
+    let payout = house.sell_shares(&registry, &mut participation, shares, 0, scenario.ctx());
+
+    // Will get fewer SUI than original deposit, but succeeds
+    assert!(payout.value() < 100_000);
+    assert!(payout.value() > 0);
 
     burn_for_testing(payout);
     destroy(house);

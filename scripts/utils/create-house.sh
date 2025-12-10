@@ -27,17 +27,21 @@ show_parameter_sets() {
     for set_num in 1 2 3 4; do
         get_parameter_set "$set_num" >/dev/null 2>&1
 
-        local min_activation_sui
+        local house_fee_percent
+        local collector_share_percent
         if command -v bc >/dev/null 2>&1; then
-            min_activation_sui=$(echo "scale=2; $MIN_ACTIVATION_BALANCE/1000000000" | bc)
+            house_fee_percent=$(echo "scale=2; $HOUSE_FEE_BPS/100" | bc)
+            collector_share_percent=$(echo "scale=2; $FEE_COLLECTOR_SHARE_BPS/100" | bc)
         else
-            min_activation_sui="$MIN_ACTIVATION_BALANCE (raw)"
+            house_fee_percent="$HOUSE_FEE_BPS bps"
+            collector_share_percent="$FEE_COLLECTOR_SHARE_BPS bps"
         fi
 
         echo "------------------------------------------------------------"
         echo "Parameter Set $set_num: $HOUSE_TYPE"
         echo "    Private              : $PRIVATE"
-        echo "    Min Activation       : $min_activation_sui SUI"
+        echo "    House Fee            : $house_fee_percent% ($HOUSE_FEE_BPS bps)"
+        echo "    Fee Collector Share  : $collector_share_percent% ($FEE_COLLECTOR_SHARE_BPS bps)"
         echo "------------------------------------------------------------"
         echo ""
     done
@@ -50,22 +54,26 @@ get_parameter_set() {
     case $set_num in
         1)
             PRIVATE=false
-            MIN_ACTIVATION_BALANCE=1000000000
+            HOUSE_FEE_BPS=1000
+            FEE_COLLECTOR_SHARE_BPS=2000
             HOUSE_TYPE="PUBLIC_1_SUI"
             ;;
         2)
             PRIVATE=false
-            MIN_ACTIVATION_BALANCE=50000000000
+            HOUSE_FEE_BPS=1000
+            FEE_COLLECTOR_SHARE_BPS=2000
             HOUSE_TYPE="PUBLIC_50_SUI"
             ;;
         3)
             PRIVATE=true
-            MIN_ACTIVATION_BALANCE=10000000000
+            HOUSE_FEE_BPS=1000
+            FEE_COLLECTOR_SHARE_BPS=2000
             HOUSE_TYPE="PRIVATE_10_SUI"
             ;;
         4)
             PRIVATE=true
-            MIN_ACTIVATION_BALANCE=1000000000
+            HOUSE_FEE_BPS=1000
+            FEE_COLLECTOR_SHARE_BPS=2000
             HOUSE_TYPE="PRIVATE_1_SUI"
             ;;
         *)
@@ -155,14 +163,13 @@ ADMIN_CAP_ID="$OPENPLAY_CORE_ADMIN_CAP"
 get_parameter_set "$PARAM_SET"
 
 print_status "Creating house with parameter set $PARAM_SET ($HOUSE_TYPE)"
-print_status "Parameters: Private=$PRIVATE, Min Activation=$MIN_ACTIVATION_BALANCE"
+print_status "Parameters: Private=$PRIVATE, House Fee=$HOUSE_FEE_BPS bps, Fee Collector Share=$FEE_COLLECTOR_SHARE_BPS bps"
 print_status "Recipient: $RECIPIENT_ADDRESS"
 
 # Create the house
 print_status "Creating house instance..."
 HOUSE_OUTPUT=$(sui client ptb \
-    --assign min_activation_balance $MIN_ACTIVATION_BALANCE \
-    --move-call $CORE_PACKAGE_ID::house::openplay_admin_new_house @$ADMIN_CAP_ID $PRIVATE min_activation_balance 2000 \
+    --move-call $CORE_PACKAGE_ID::house::openplay_admin_new_house @$ADMIN_CAP_ID @$REGISTRY_ID $PRIVATE $HOUSE_FEE_BPS $FEE_COLLECTOR_SHARE_BPS \
     --assign createHouseOutput \
     --move-call $CORE_PACKAGE_ID::house::share @$REGISTRY_ID createHouseOutput.0 \
     --transfer-objects [createHouseOutput.1] @$RECIPIENT_ADDRESS \
@@ -205,8 +212,8 @@ echo "  House ID: $HOUSE_ID"
 echo "  House Admin Cap ID: $HOUSE_ADMIN_CAP_ID"
 echo "  Parameter Set: $PARAM_SET ($HOUSE_TYPE)"
 echo "  Private: $PRIVATE"
-echo "  Min Activation Balance: $MIN_ACTIVATION_BALANCE"
-echo "  House Performance Fee: 20% (2000 bps)"
+echo "  House Fee: $HOUSE_FEE_BPS bps"
+echo "  Fee Collector Share: $FEE_COLLECTOR_SHARE_BPS bps"
 echo "  Admin Cap Recipient: $RECIPIENT_ADDRESS"
 echo ""
 

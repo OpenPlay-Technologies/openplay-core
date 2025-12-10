@@ -39,6 +39,7 @@ const EProtocolFeeTooHigh: u64 = 18; // Protocol fee cannot exceed 20%
 const EHouseAndCollectorFeesTooHigh: u64 = 19; // House fee + collector fee cannot exceed 50%
 const ENotEnoughShares: u64 = 20; // Not enough shares to sell
 const EInvalidAmount: u64 = 21; // Invalid amount (e.g., deposit with zero shares)
+const ESlippageExceeded: u64 = 22; // Slippage protection: received less than minimum expected
 
 // === Constants ===
 const MAX_GAMES: u64 = 500;
@@ -295,11 +296,18 @@ public fun new_participation(self: &House, ctx: &mut TxContext): Participation {
 /// Calculates the number of shares to mint based on current NAV.
 /// Shares are 1:1 with MIST, so shares = deposit_amount / nav_per_share.
 /// Requires end-of-day processing to ensure NAV is up-to-date.
+///
+/// # Slippage Protection
+/// The `min_shares_out` parameter protects against unfavorable NAV changes between
+/// transaction submission and execution. If the actual shares received would be less
+/// than `min_shares_out`, the transaction aborts with `ESlippageExceeded`.
+/// Set to 0 to disable slippage protection (not recommended for large deposits).
 public fun buy_shares(
     self: &mut House,
     registry: &Registry,
     participation: &mut Participation,
     deposit: Coin<SUI>,
+    min_shares_out: u64,
     ctx: &mut TxContext,
 ): u64 {
     self.assert_valid_participation(participation);
@@ -329,6 +337,9 @@ public fun buy_shares(
 
     // Ensure we mint at least some shares
     assert!(shares_to_mint > 0, EInvalidAmount);
+
+    // Slippage protection: ensure user receives at least min_shares_out
+    assert!(shares_to_mint >= min_shares_out, ESlippageExceeded);
 
     // Update participation
     participation::add_shares(participation, shares_to_mint);
@@ -362,11 +373,18 @@ public fun buy_shares(
 /// Shares are 1:1 with MIST, so payout = shares_to_sell * nav_per_share.
 /// Requires end-of-day processing to ensure NAV is up-to-date.
 /// House performance fees are handled at epoch end (GGR-based), not on individual sales.
+///
+/// # Slippage Protection
+/// The `min_sui_out` parameter protects against unfavorable NAV changes between
+/// transaction submission and execution. If the actual SUI received would be less
+/// than `min_sui_out`, the transaction aborts with `ESlippageExceeded`.
+/// Set to 0 to disable slippage protection (not recommended for large sales).
 public fun sell_shares(
     self: &mut House,
     registry: &Registry,
     participation: &mut Participation,
     shares_to_sell: u64,
+    min_sui_out: u64,
     ctx: &mut TxContext,
 ): Coin<SUI> {
     self.assert_valid_participation(participation);
@@ -394,6 +412,9 @@ public fun sell_shares(
     };
     // Use mul_floor to preserve precision: (shares_to_sell * effective_value) / total_shares
     let payout = mul_floor(shares_to_sell, effective_value, total_shares);
+
+    // Slippage protection: ensure user receives at least min_sui_out
+    assert!(payout >= min_sui_out, ESlippageExceeded);
 
     // Remove shares from participation
     participation::remove_shares(participation, shares_to_sell);

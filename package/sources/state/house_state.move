@@ -316,28 +316,24 @@ public(package) fun calculate_pending_protocol_fees(self: &State): u64 {
 }
 
 /// Calculates total pending fees (protocol + house + collector) for NAV calculation.
-/// This is more efficient than calculating each fee separately.
 /// Returns the total amount of pending fees that reduce NAV during the epoch.
 /// Uses the epoch-specific fees from state.
+/// 
+/// Note: This function calculates fees correctly by:
+/// - Using global GGR for protocol and house fees (they are based on overall house performance)
+/// - Using per-collector GGR for collector fees (each collector's fee is based on their own GGR)
+/// This is important because different collectors can have different GGR values (some positive,
+/// some negative), and only collectors with positive GGR generate fees.
 public(package) fun calculate_total_pending_fees(self: &State): u64 {
-    // Calculate GGR: bet_amount - win_amount
-    let ggr = if (self.current_volumes.total_bet_amount > self.current_volumes.total_win_amount) {
-        self.current_volumes.total_bet_amount - self.current_volumes.total_win_amount
-    } else {
-        0
-    };
+    // Calculate pending protocol and house fees based on global GGR
+    let pending_protocol_fees = self.calculate_pending_protocol_fees();
+    let pending_house_fees = self.calculate_pending_house_fees();
+    
+    // Calculate pending collector fees based on per-collector GGR
+    // This correctly handles the case where some collectors have negative GGR
+    let pending_collector_fees = self.calculate_pending_collector_fees();
 
-    if (ggr == 0) {
-        return 0
-    };
-
-    // Calculate total fee bps: protocol + house + collector
-    let total_fee_bps =
-        self.current_epoch_protocol_fee_bps + self.current_epoch_house_fee_bps + self.current_epoch_fee_collector_share_bps;
-
-    // Calculate total fee: GGR * total_fee_bps / 10000
-    // Round UP to favor protocol
-    mul_ceil_bps(ggr, total_fee_bps)
+    pending_protocol_fees + pending_house_fees + pending_collector_fees
 }
 
 /// Processes end of day for collectors - returns fees per collector.

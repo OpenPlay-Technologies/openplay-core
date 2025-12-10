@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [v3.1] - In Progress
 
+### Added
+
+#### Slippage Protection for Share Operations
+- **New Feature:** Added slippage protection to `buy_shares()` and `sell_shares()` functions
+  - `buy_shares()` now takes a `min_shares_out: u64` parameter - aborts with `ESlippageExceeded` if shares received would be less than the minimum
+  - `sell_shares()` now takes a `min_sui_out: u64` parameter - aborts with `ESlippageExceeded` if SUI received would be less than the minimum
+  - Protects users from unfavorable NAV changes between transaction submission and execution
+  - Set parameter to 0 to disable slippage protection (not recommended for large transactions)
+- **New Error Code:**
+  - `ESlippageExceeded: u64 = 22` - slippage protection triggered when received amount is below minimum
+
 ### Major Architectural Changes
 
 #### Share-Based Participation Model
@@ -68,8 +79,8 @@ All notable changes to this project will be documented in this file.
   - `house_balance(&House): u64` - returns the house balance
   - `game_fee_collector(&House, game_id: &ID): ID` - returns fee collector ID for a game
   - `refresh_state(&mut House, &Registry, ctx: &mut TxContext)` - processes end of day to refresh state
-  - `buy_shares(&mut House, &Registry, &mut Participation, deposit: Coin<SUI>, ctx: &mut TxContext): u64` - buys shares with deposited funds
-  - `sell_shares(&mut House, &Registry, &mut Participation, shares_to_sell: u64, ctx: &mut TxContext): Coin<SUI>` - sells shares and withdraws proceeds
+  - `buy_shares(&mut House, &Registry, &mut Participation, deposit: Coin<SUI>, min_shares_out: u64, ctx: &mut TxContext): u64` - buys shares with deposited funds, with slippage protection
+  - `sell_shares(&mut House, &Registry, &mut Participation, shares_to_sell: u64, min_sui_out: u64, ctx: &mut TxContext): Coin<SUI>` - sells shares and withdraws proceeds, with slippage protection
   - `admin_create_fee_collector(&House, &HouseAdminCap, ctx: &mut TxContext): (FeeCollector, FeeCollectorCap)` - creates a fee collector
   - `admin_add_tx_allowed_with_collector(&mut House, &HouseAdminCap, game_id: ID, &FeeCollector)` - whitelists game and assigns fee collector
   - `claim_collector_fees(&mut House, &Registry, &FeeCollector, &FeeCollectorCap, ctx: &mut TxContext): Coin<SUI>` - claims fees for a fee collector

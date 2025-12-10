@@ -1459,3 +1459,79 @@ public fun test_pending_fees_reset_then_new_epoch_accumulates() {
 // function aborts with EUnknownTxType BEFORE house_state can check for unknown types.
 // This is defensive programming - the check exists but can never be reached.
 // See transaction_tests::is_credit_aborts_on_invalid_type for coverage of this path.
+
+#[test]
+/// Test that calculate_total_pending_fees correctly handles mixed GGR across collectors.
+/// 
+/// Bug scenario:
+/// - Collector A: bet = 10k, win = 20k → GGR = -10k (negative, no fee)
+/// - Collector B: bet = 20k, win = 10k → GGR = +10k (positive, has fee)
+/// - Global: bet = 30k, win = 30k → GGR = 0
+/// 
+/// Expected:
+/// - calculate_pending_collector_fees() = fee for collector B only (since B has positive GGR)
+/// - calculate_pending_house_fees() = 0 (global GGR is 0)
+/// - calculate_pending_protocol_fees() = 0 (global GGR is 0)
+/// - calculate_total_pending_fees() = collector fee for B (since B's positive GGR generates a fee)
+/// 
+/// The bug was that calculate_total_pending_fees() used global GGR for ALL fees,
+/// including collector fees, which should be calculated per-collector.
+public fun test_calculate_total_pending_fees_mixed_collector_ggr() {
+    let addr = @0xA;
+    let mut scenario = begin(addr);
+    {
+        let house_id = object::id_from_address(@0x0);
+        let protocol_fee_bps = 50;    // 0.5%
+        let house_fee_bps = 2000;     // 20%
+        let fee_collector_share_bps = 1000; // 10%
+        let mut state = house_state::new(
+            house_id,
+            protocol_fee_bps,
+            house_fee_bps,
+            fee_collector_share_bps,
+            scenario.ctx(),
+        );
+        let (bm, bm_cap) = balance_manager::new(scenario.ctx());
+        let fee_collector_id_a = object::id_from_address(@0xB);
+        let fee_collector_id_b = object::id_from_address(@0xC);
+
+        // Collector A: bet = 10k, win = 20k → GGR = -10k (loss, no fee)
+        let txs_a = vector[bet(10_000), win(20_000)];
+        state.process_transactions(&txs_a, bm.id(), fee_collector_id_a, scenario.ctx());
+
+        // Collector B: bet = 20k, win = 10k → GGR = +10k (profit, has fee)
+        let txs_b = vector[bet(20_000), win(10_000)];
+        state.process_transactions(&txs_b, bm.id(), fee_collector_id_b, scenario.ctx());
+
+        // Global volumes: bet = 30k, win = 30k → GGR = 0
+        let volumes = state.current_volumes();
+        assert!(house_state::total_bet_amount(&volumes) == 30_000, 0);
+        assert!(house_state::total_win_amount(&volumes) == 30_000, 1);
+
+        // Individual pending fees:
+        // - Collector fees: Only collector B has positive GGR, so fee = 10k * 10% = 1000
+        let pending_collector_fees = state.calculate_pending_collector_fees();
+        let expected_collector_b_fee = mul_ceil_bps(10_000, fee_collector_share_bps);
+        assert!(pending_collector_fees == expected_collector_b_fee, 2);
+
+        // - House fees: Global GGR = 0, so no house fee
+        let pending_house_fees = state.calculate_pending_house_fees();
+        assert!(pending_house_fees == 0, 3);
+
+        // - Protocol fees: Global GGR = 0, so no protocol fee
+        let pending_protocol_fees = state.calculate_pending_protocol_fees();
+        assert!(pending_protocol_fees == 0, 4);
+
+        // Total pending fees should equal the sum of individual pending fees
+        // This is the bug: calculate_total_pending_fees() was using global GGR for all fees,
+        // so it returned 0 instead of the collector fee.
+        let total_pending_fees = state.calculate_total_pending_fees();
+        let expected_total = pending_collector_fees + pending_house_fees + pending_protocol_fees;
+        assert!(total_pending_fees == expected_total, 5);
+
+        destroy(state);
+        destroy(bm);
+        destroy(bm_cap);
+        scenario.end();
+    }
+}

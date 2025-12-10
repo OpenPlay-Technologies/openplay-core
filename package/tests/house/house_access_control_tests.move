@@ -178,7 +178,7 @@ fun participation_wrong_house_fails() {
 
     // Try to buy shares on house1 with participation for house2
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house1.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house1.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
     abort 0
 }
 
@@ -192,7 +192,7 @@ fun nav_validates_participation() {
     // Create valid participation
     let mut participation = participation::empty(house.id(), scenario.ctx());
     let deposit = mint_for_testing<SUI>(100_000, scenario.ctx());
-    house.buy_shares(&registry, &mut participation, deposit, scenario.ctx());
+    house.buy_shares(&registry, &mut participation, deposit, 0, scenario.ctx());
 
     // NAV works for valid participation
     let nav = house.nav(&participation);
