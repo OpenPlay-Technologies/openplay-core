@@ -280,16 +280,29 @@ Beyond gas, also verify games don't have resource attacks on:
 
 Beyond the mandatory checks, consider these additional security measures:
 
-### 7. Transaction Validation
+### 7. Atomic Transaction Flow ("Free Roll" Protection) ✅
 
-**Recommendation**: Verify that games properly validate all transactions before submission.
+**Requirement**: Games must enforce an atomic transaction flow where funds are locked (bet placed) in the same transaction block as the game initiation or outcome generation.
 
-**Checks**:
-- Bet amounts are within min/max limits
-- Win amounts are calculated correctly
-- Transaction types are valid (bet vs win)
-- No duplicate transactions
-- Proper sequencing (bet before win)
+**Why**: If a game allows a user to "start" a game without locking funds, the user could:
+1. Start the game (e.g., deal cards off-chain)
+2. See the result
+3. If they lose, withdraw all funds from their `BalanceManager`
+4. When the game tries to settle the loss, the transaction fails (insufficient funds)
+5. The user effectively plays risk-free ("Free Roll")
+
+**How to Verify**:
+- **Atomic Execution**: Verify that the bet transaction (`house.process_transactions`) happens in the same Programmable Transaction Block (PTB) as the game logic/RNG.
+- **Fund Locking**: If the game is asynchronous (e.g., requires user input), verify that funds are escrowed or locked at the start of the game, preventing withdrawal during the active game state.
+- **Balance Checks**: Ensure the game checks for sufficient funds *and* consumes them (or locks them) before any outcome is revealed.
+
+**What to Look For**:
+- ✅ Bet transaction submitted in the same PTB as RNG/outcome
+- ✅ Funds locked/escrowed for multi-step games
+- ❌ Game reveals outcome before funds are secured
+- ❌ User can withdraw funds while game is "in progress"
+
+**Risk if Skipped**: Users can abuse the system to avoid paying for losses, bankrupting the house or playing risk-free.
 
 ### 8. Maximum Payout Limits
 

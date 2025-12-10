@@ -240,14 +240,13 @@ public(package) fun burn_shares(self: &mut State, shares: u64) {
 public(package) fun calculate_pending_collector_fees(self: &State): u64 {
     let mut total_pending = 0u64;
 
-    // Iterate through all collectors and calculate their pending fees
-    let keys = vec_map::keys(&self.current_collector_ggr);
-    let len = vector::length(&keys);
+    // Iterate through all collectors using index-based access (O(1) per entry)
+    // to avoid O(N²) complexity from keys() + get()
+    let len = vec_map::length(&self.current_collector_ggr);
     let mut i = 0;
 
     while (i < len) {
-        let collector_id = *vector::borrow(&keys, i);
-        let ggr = vec_map::get(&self.current_collector_ggr, &collector_id);
+        let (_, ggr) = vec_map::get_entry_by_idx(&self.current_collector_ggr, i);
 
         // Calculate GGR: bet_amount - win_amount
         let ggr_amount = if (ggr.bet_amount > ggr.win_amount) {
@@ -355,16 +354,16 @@ public(package) fun process_collector_end_of_day(
     // Save current GGR to history before processing
     // Create a copy of current_collector_ggr for history
     let mut historic_ggr = vec_map::empty<ID, CollectorGGR>();
-    let keys = vec_map::keys(&self.current_collector_ggr);
-    let len = vector::length(&keys);
+    let len = vec_map::length(&self.current_collector_ggr);
     let mut i = 0;
 
+    // First pass: copy to history and calculate fees using index-based access (O(1) per entry)
+    // to avoid O(N²) complexity from keys() + get()
     while (i < len) {
-        let collector_id = *vector::borrow(&keys, i);
-        let ggr = vec_map::get(&self.current_collector_ggr, &collector_id);
+        let (collector_id, ggr) = vec_map::get_entry_by_idx(&self.current_collector_ggr, i);
 
         // Copy GGR to history
-        vec_map::insert(&mut historic_ggr, collector_id, *ggr);
+        vec_map::insert(&mut historic_ggr, *collector_id, *ggr);
 
         // Calculate GGR: bet_amount - win_amount
         let ggr_amount = if (ggr.bet_amount > ggr.win_amount) {
@@ -381,17 +380,21 @@ public(package) fun process_collector_end_of_day(
             vector::push_back(
                 &mut fees,
                 CollectorFee {
-                    collector_id,
+                    collector_id: *collector_id,
                     fee_amount: fee,
                 },
             );
         };
 
-        // Reset GGR for new epoch by modifying in place
-        let ggr_mut = vec_map::get_mut(&mut self.current_collector_ggr, &collector_id);
+        i = i + 1;
+    };
+
+    // Second pass: reset GGR for new epoch using index-based mutable access (O(1) per entry)
+    i = 0;
+    while (i < len) {
+        let (_, ggr_mut) = vec_map::get_entry_by_idx_mut(&mut self.current_collector_ggr, i);
         ggr_mut.bet_amount = 0;
         ggr_mut.win_amount = 0;
-
         i = i + 1;
     };
 
