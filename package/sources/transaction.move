@@ -92,3 +92,12 @@ public fun bet(amount: u64): Transaction {
         amount: amount,
     }
 }
+
+/// Creates a transaction with an invalid type for testing error paths.
+#[test_only]
+public fun invalid_type_for_testing(amount: u64): Transaction {
+    Transaction {
+        transaction_type: std::string::utf8(b"invalid"),
+        amount,
+    }
+}

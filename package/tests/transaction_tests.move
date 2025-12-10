@@ -137,8 +137,18 @@ public fun min_transaction_amount_returns_correct_value() {
     };
 }
 
-// NOTE: EUnknownTxType cannot be tested directly from tests because Transaction struct
-// can only be instantiated within its defining module, and all creation functions
-// use valid transaction types (tx_type_bet() or tx_type_win()).
-// The EUnknownTxType error is a safety check that should never occur in practice
-// since all transaction creation is controlled by the module.
+/// Test that is_credit aborts with EUnknownTxType for invalid transaction type.
+#[test, expected_failure(abort_code = transaction::EUnknownTxType)]
+public fun is_credit_aborts_on_invalid_type() {
+    let tx = transaction::invalid_type_for_testing(1000);
+    transaction::is_credit(&tx);
+    abort 0
+}
+
+/// Test that is_debit aborts with EUnknownTxType for invalid transaction type.
+#[test, expected_failure(abort_code = transaction::EUnknownTxType)]
+public fun is_debit_aborts_on_invalid_type() {
+    let tx = transaction::invalid_type_for_testing(1000);
+    transaction::is_debit(&tx);
+    abort 0
+}

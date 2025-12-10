@@ -1453,3 +1453,9 @@ public fun test_pending_fees_reset_then_new_epoch_accumulates() {
         scenario.end();
     }
 }
+
+// NOTE: The EUnknownTransaction error in house_state is unreachable code.
+// When an invalid transaction type is processed, the transaction module's is_credit()
+// function aborts with EUnknownTxType BEFORE house_state can check for unknown types.
+// This is defensive programming - the check exists but can never be reached.
+// See transaction_tests::is_credit_aborts_on_invalid_type for coverage of this path.

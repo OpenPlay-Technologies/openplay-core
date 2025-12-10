@@ -164,3 +164,9 @@ public fun test_view_functions() {
         scenario.end();
     }
 }
+
+// NOTE: The EUnknownTransaction error in game_stats is unreachable code.
+// When an invalid transaction type is processed, the transaction module's is_credit()
+// function aborts with EUnknownTxType BEFORE game_stats can check for unknown types.
+// This is defensive programming - the check exists but can never be reached.
+// See transaction_tests::is_credit_aborts_on_invalid_type for coverage of this path.
