@@ -65,7 +65,6 @@ All notable changes to this project will be documented in this file.
   - `fee_collector_share_bps: u64` - fee collector share of GGR (in basis points)
   - `game_fee_collectors: VecMap<ID, ID>` - maps game_id to fee_collector_id (replaces `tx_allow_listed` and `games_fee_bps`)
 - **New Constants:**
-  - `INITIAL_NAV: u64 = 1_000_000_000` - initial NAV per share (1 MIST = 1 share)
   - `max_house_and_collector_fees_bps(): u64` - maximum combined house + collector fees (50% to ensure 30% for stakers)
 - **New Error Codes:**
   - `ENotEnoughShares: u64 = 20` - not enough shares to sell
