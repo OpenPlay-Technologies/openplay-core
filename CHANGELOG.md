@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v3.1] - In Progress
+## [v3.1] - Completed
 
 ### Added
 
