@@ -358,7 +358,7 @@ public fun test_can_mint_up_to_max_play_caps() {
         // Mint and immediately destroy play caps to verify the limit logic works
         // Note: destroy_play_cap doesn't remove from allow list, so we use destroy_play_cap_and_revoke
         let mut i = 0;
-        while (i < 100) {
+        while (i < 100u64) {
             let play_cap = balance_manager.mint_play_cap(&balance_manager_cap, scenario.ctx());
             balance_manager::destroy_play_cap_and_revoke(play_cap, &mut balance_manager, scenario.ctx());
             i = i + 1;

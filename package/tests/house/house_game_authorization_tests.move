@@ -251,7 +251,7 @@ fun multiple_games_can_be_added() {
 
     // Add 10 games (well under limit of 500)
     let mut i = 0;
-    while (i < 10) {
+    while (i < 10u64) {
         let game_id = object::id_from_address(@0xB);
         house.admin_add_tx_allowed_with_collector(&admin_cap, game_id, &fee_collector);
         i = i + 1;

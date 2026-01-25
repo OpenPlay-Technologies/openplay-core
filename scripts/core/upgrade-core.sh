@@ -195,16 +195,41 @@ print_status "Using upgrade capability: $ORIGINAL_UPGRADE_CAP"
 # Change to the core package directory
 cd package
 
-# Upgrade the package and capture the JSON output
+# Upgrade the package and capture the output
 print_status "Upgrading package..."
-UPGRADE_OUTPUT=$(sui client upgrade --upgrade-capability "$ORIGINAL_UPGRADE_CAP" --json)
+UPGRADE_RAW_OUTPUT=$(sui client upgrade --upgrade-capability "$ORIGINAL_UPGRADE_CAP" --json 2>&1) || UPGRADE_FAILED=true
 
-# Check if upgrade was successful
-if echo "$UPGRADE_OUTPUT" | jq -e '.effects.status.status == "success"' > /dev/null; then
+# Extract only the JSON portion (sui CLI prints build messages to stdout before JSON)
+# Find the first '{' and take everything from there
+UPGRADE_OUTPUT=$(echo "$UPGRADE_RAW_OUTPUT" | sed -n '/^{/,$p')
+
+# Check if upgrade command failed (non-zero exit code)
+if [ "$UPGRADE_FAILED" = "true" ]; then
+    print_error "Package upgrade command failed!"
+    print_error "Full output:"
+    echo "$UPGRADE_RAW_OUTPUT"
+    exit 1
+fi
+
+# Check if we got valid JSON
+if [ -z "$UPGRADE_OUTPUT" ]; then
+    print_error "Failed to extract JSON from upgrade output!"
+    print_error "Full output:"
+    echo "$UPGRADE_RAW_OUTPUT"
+    exit 1
+fi
+
+# Check if upgrade transaction was successful
+if echo "$UPGRADE_OUTPUT" | jq -e '.effects.status.status == "success"' > /dev/null 2>&1; then
     print_success "Package upgraded successfully!"
 else
-    print_error "Package upgrade failed!"
-    echo "$UPGRADE_OUTPUT" | jq '.effects.status'
+    print_error "Package upgrade transaction failed!"
+    # Try to extract status, but show full output if that fails
+    if echo "$UPGRADE_OUTPUT" | jq -e '.effects.status' > /dev/null 2>&1; then
+        echo "$UPGRADE_OUTPUT" | jq '.effects.status'
+    else
+        echo "$UPGRADE_RAW_OUTPUT"
+    fi
     exit 1
 fi
 
